@@ -121,7 +121,22 @@ const isQuotaExceededError = (error: any) => {
 
 type SavingLockTypes = "collaboration";
 
+export type AfterSaveHandler = (
+  elements: readonly ExcalidrawElement[],
+  appState: AppState,
+  files: BinaryFiles,
+) => void;
+
 export class LocalData {
+  private static afterSaveHandlers = new Set<AfterSaveHandler>();
+
+  static onAfterSave = (handler: AfterSaveHandler) => {
+    this.afterSaveHandlers.add(handler);
+    return () => {
+      this.afterSaveHandlers.delete(handler);
+    };
+  };
+
   private static _save = debounce(
     async (
       elements: readonly ExcalidrawElement[],
@@ -136,6 +151,14 @@ export class LocalData {
         files,
       });
       onFilesSaved();
+
+      for (const handler of this.afterSaveHandlers) {
+        try {
+          handler(elements, appState, files);
+        } catch (error) {
+          console.warn("After-save handler error", error);
+        }
+      }
     },
     SAVE_TO_LOCAL_STORAGE_TIMEOUT,
   );

@@ -2,6 +2,7 @@ import { CURSOR_TYPE, EVENT, POINTER_BUTTON } from "@excalidraw/common";
 
 import { isHandToolActive } from "../appState";
 import { withBatchedUpdates, withBatchedUpdatesThrottled } from "../reactUtils";
+import { isEraserOrBarrelButton } from "../stylus";
 
 import type React from "react";
 
@@ -102,7 +103,13 @@ export class AppPan {
     const { app } = this;
     // a new press supersedes whatever the previous session left pending
     this.suppressNextContextMenu = false;
-    const isSecondary = event.button === POINTER_BUTTON.SECONDARY;
+    const isSecondary =
+      event.button === POINTER_BUTTON.SECONDARY &&
+      !isEraserOrBarrelButton({
+        button: event.button,
+        buttons: event.buttons,
+        pointerType: "pointerType" in event ? event.pointerType : undefined,
+      });
     if (
       !(
         this.dependencies.getPointerCount() <= 1 &&

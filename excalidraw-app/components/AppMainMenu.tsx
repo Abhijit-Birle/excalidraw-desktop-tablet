@@ -2,9 +2,12 @@ import {
   loginIcon,
   ExcalLogo,
   eyeIcon,
+  historyIcon,
+  PlusIcon,
 } from "@excalidraw/excalidraw/components/icons";
 import { useI18n } from "@excalidraw/excalidraw/i18n";
 import { MainMenu } from "@excalidraw/excalidraw/index";
+import { getShortcutKey } from "@excalidraw/excalidraw/shortcut";
 import React from "react";
 
 import { isDevEnv } from "@excalidraw/common";
@@ -18,6 +21,8 @@ import { saveDebugState } from "./DebugCanvas";
 
 export const AppMainMenu: React.FC<{
   onCollabDialogOpen: () => any;
+  onNewDiagram: () => void;
+  onRecentFilesDialogOpen: () => void;
   isCollaborating: boolean;
   isCollabEnabled: boolean;
   theme: Theme | "system";
@@ -27,6 +32,20 @@ export const AppMainMenu: React.FC<{
   return (
     <MainMenu>
       <MainMenu.DefaultItems.LoadScene />
+      <MainMenu.Item
+        icon={PlusIcon}
+        shortcut={getShortcutKey("CtrlOrCmd+Alt+N")}
+        onSelect={() => props.onNewDiagram()}
+      >
+        {t("recentFiles.newDiagram")}
+      </MainMenu.Item>
+      <MainMenu.Item
+        icon={historyIcon}
+        shortcut={getShortcutKey("CtrlOrCmd+Shift+O")}
+        onSelect={() => props.onRecentFilesDialogOpen()}
+      >
+        {t("recentFiles.menuItem")}
+      </MainMenu.Item>
       <MainMenu.DefaultItems.SaveToActiveFile />
       <MainMenu.DefaultItems.Export />
       <MainMenu.DefaultItems.SaveAsImage />

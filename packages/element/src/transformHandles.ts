@@ -48,7 +48,7 @@ export type MaybeTransformHandleType = TransformHandleType | false;
 
 const transformHandleSizes: { [k in PointerType]: number } = {
   mouse: 8,
-  pen: 16,
+  pen: 24,
   touch: 28,
 };
 

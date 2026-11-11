@@ -1,0 +1,345 @@
+@import "../../packages/excalidraw/css/variables.module.scss";
+
+.excalidraw {
+  .RecentFilesDialog__dialog {
+    .Dialog__titleContent {
+      display: block;
+      width: 100%;
+    }
+  }
+
+  .RecentFilesDialog {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    font-family: var(--ui-font, "Assistant", sans-serif);
+
+    @include isMobile {
+      max-height: calc(100vh - 7rem);
+    }
+
+    &__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      width: 100%;
+
+      @include isMobile {
+        padding-right: 2.5rem;
+        box-sizing: border-box;
+      }
+    }
+
+    &__headerTitle {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &__toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      min-height: 2.75rem;
+
+      .excalidraw-button,
+      button {
+        min-height: 2.75rem;
+      }
+    }
+
+    &__banner {
+      padding: 0.625rem 0.875rem;
+      border-radius: var(--border-radius-md);
+      background: var(--button-destructive-bg-color);
+      color: var(--button-destructive-color);
+      font-size: 0.875rem;
+      line-height: 1.4;
+    }
+
+    &__empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2.5rem 1.5rem;
+      gap: 0.625rem;
+      border: 1px dashed var(--dialog-border-color);
+      border-radius: var(--border-radius-lg);
+      background: var(--color-surface-mid);
+
+      &-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 50%;
+        background: var(--color-surface-high);
+        color: var(--color-primary);
+
+        svg {
+          width: 1.375rem;
+          height: 1.375rem;
+        }
+      }
+
+      &-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text-primary-color);
+      }
+
+      &-description {
+        margin: 0;
+        max-width: 26rem;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        color: var(--keybinding-color);
+      }
+    }
+
+    &__list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr));
+      gap: 0.875rem;
+      max-height: 62vh;
+      overflow-y: auto;
+      padding: 0.125rem;
+
+      @include isMobile {
+        display: flex;
+        flex-direction: column;
+        gap: 0.625rem;
+        max-height: none;
+        flex: 1 1 auto;
+      }
+    }
+
+    &__item {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.625rem;
+      padding: 0.75rem;
+      border-radius: var(--border-radius-lg);
+      border: 1px solid var(--default-border-color);
+      background: var(--color-surface-mid);
+      touch-action: pan-y;
+      will-change: transform;
+      transition: background-color 120ms ease, border-color 120ms ease,
+        transform 150ms ease;
+
+      &:hover {
+        background: var(--color-surface-low);
+        border-color: var(--color-border-outline-variant);
+      }
+
+      &--swipeReady {
+        border-color: var(--button-destructive-color);
+        background: var(--button-destructive-bg-color);
+      }
+
+      @include isMobile {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.625rem;
+      }
+    }
+
+    &__thumbnailButton {
+      display: flex;
+      width: 100%;
+      flex: 0 0 auto;
+      padding: 0;
+      margin: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+
+      @include isMobile {
+        width: auto;
+      }
+
+      &:disabled {
+        cursor: not-allowed;
+        opacity: 0.75;
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--focus-highlight-color);
+        outline-offset: 2px;
+        border-radius: var(--border-radius-md);
+      }
+    }
+
+    &__thumbnail {
+      flex: 0 0 auto;
+      width: 100%;
+      height: 8.25rem;
+      border-radius: var(--border-radius-md);
+      border: 1px solid var(--default-border-color);
+      background: var(--color-surface-lowest);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--keybinding-color);
+
+      @include isMobile {
+        width: 4.75rem;
+        height: 3.25rem;
+      }
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+
+      svg {
+        width: 1.5rem;
+        height: 1.5rem;
+      }
+    }
+
+    &__meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    &__nameButton {
+      display: flex;
+      align-items: center;
+      min-height: 2.75rem;
+      max-width: 100%;
+      padding: 0.125rem 0.25rem;
+      margin: -0.125rem -0.25rem;
+      border: 1px solid transparent;
+      border-radius: var(--border-radius-sm, 0.25rem);
+      background: transparent;
+      text-align: left;
+      color: inherit;
+      font: inherit;
+      cursor: text;
+
+      &:hover:not(:disabled) {
+        border-color: var(--default-border-color);
+        background: var(--color-surface-high);
+      }
+
+      &:disabled {
+        cursor: not-allowed;
+        opacity: 0.75;
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--focus-highlight-color);
+        outline-offset: 1px;
+      }
+    }
+
+    &__name {
+      display: block;
+      max-width: 100%;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--text-primary-color);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    &__nameInput {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      padding: 0.125rem 0.375rem;
+      margin: -0.125rem -0.375rem;
+      border: 1px solid var(--color-primary);
+      border-radius: var(--border-radius-sm, 0.25rem);
+      background: var(--color-surface-lowest);
+      color: var(--text-primary-color);
+      font-family: inherit;
+      font-size: 0.9375rem;
+      font-weight: 600;
+
+      &:focus {
+        outline: 2px solid var(--focus-highlight-color);
+        outline-offset: 0;
+      }
+    }
+
+    &__details {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.375rem;
+      font-size: 0.8125rem;
+      color: var(--keybinding-color);
+    }
+
+    &__actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      flex: 0 0 auto;
+
+      button {
+        min-height: 2.75rem;
+      }
+
+      @include isMobile {
+        width: 100%;
+        justify-content: flex-end;
+      }
+    }
+
+    &__deleteButton {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.75rem;
+      min-height: 2.75rem;
+      width: 2.75rem;
+      height: 2.75rem;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: var(--border-radius-md);
+      background: transparent;
+      color: var(--keybinding-color);
+      cursor: pointer;
+      transition: background-color 120ms ease, color 120ms ease;
+
+      svg {
+        width: 1rem;
+        height: 1rem;
+      }
+
+      &:hover:not(:disabled) {
+        background: var(--button-destructive-bg-color);
+        color: var(--button-destructive-color);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--focus-highlight-color);
+        outline-offset: 2px;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+  }
+}

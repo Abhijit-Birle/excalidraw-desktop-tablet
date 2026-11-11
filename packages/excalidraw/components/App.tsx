@@ -17,8 +17,6 @@ import {
   KEYS,
   APP_NAME,
   CURSOR_TYPE,
-  DEFAULT_STROKE_STREAMLINE,
-  DEFAULT_STROKE_STREAMLINE_PRECISE,
   DRAGGING_THRESHOLD,
   ELEMENT_SHIFT_TRANSLATE_AMOUNT,
   ELEMENT_TRANSLATE_AMOUNT,
@@ -369,6 +367,14 @@ import { isOverScrollBars } from "../scene/scrollbars";
 import { LassoTrail } from "../lasso";
 import { EraserTrail } from "../eraser";
 import { getShortcutKey } from "../shortcut";
+import {
+  extractCoalescedSamples,
+  getFreedrawStreamlineForPointer,
+  isEraserOrBarrelButton,
+  shouldRejectTouchInPenMode,
+  shouldSimulatePressure,
+  type CoalescedPointerSample,
+} from "../stylus";
 
 import {
   getColorTargetAppStateUpdates,
@@ -599,6 +605,10 @@ class App extends React.Component<AppProps, AppState> {
 
   private excalidrawContainerRef = React.createRef<HTMLDivElement>();
   private zenModeTransitionTimer = 0;
+  private activePenPointerIds = new Set<number>();
+  private isPenHovering = false;
+  private penHoverTimeout = 0;
+  private suppressNextBarrelContextMenu = false;
 
   public get ownerDocument(): Document {
     return (
@@ -2721,6 +2731,7 @@ class App extends React.Component<AppProps, AppState> {
                             onContextMenu={this.handleCanvasContextMenu}
                             onClick={this.handleCanvasClick}
                             onPointerMove={this.handleCanvasPointerMove}
+                            onPointerLeave={this.handleCanvasPointerLeave}
                             onPointerUp={this.handleCanvasPointerUp}
                             onPointerCancel={this.handleCanvasPointerCancel}
                             onTouchMove={this.handleTouchMove}
@@ -3927,6 +3938,7 @@ class App extends React.Component<AppProps, AppState> {
     }
 
     this.ownerWindow.clearTimeout(this.zenModeTransitionTimer);
+    this.ownerWindow.clearTimeout(this.penHoverTimeout);
     this.unmarkZenModeTransition();
     this.editorLifecycleEvents.emit("editor:unmount");
     this.props.onUnmount?.();
@@ -4740,9 +4752,60 @@ class App extends React.Component<AppProps, AppState> {
     this.setState(state, callback);
   };
 
+  private isPenActiveOrHovering = () =>
+    this.isPenHovering || this.activePenPointerIds.size > 0;
+
+  private clearPenHoverState = () => {
+    this.isPenHovering = false;
+    if (this.penHoverTimeout) {
+      this.ownerWindow.clearTimeout(this.penHoverTimeout);
+      this.penHoverTimeout = 0;
+    }
+  };
+
+  private handlePenHoverOrMove = (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) => {
+    if (!this.state.penDetected) {
+      this.setState({
+        penMode: true,
+        penDetected: true,
+        currentItemStrokeVariability: "variable",
+      });
+    }
+
+    if (event.buttons === 0) {
+      this.isPenHovering = true;
+      if (this.penHoverTimeout) {
+        this.ownerWindow.clearTimeout(this.penHoverTimeout);
+      }
+      this.penHoverTimeout = this.ownerWindow.setTimeout(() => {
+        this.isPenHovering = false;
+        this.penHoverTimeout = 0;
+      }, 1500);
+    } else {
+      this.clearPenHoverState();
+    }
+  };
+
+  private handleCanvasPointerLeave = (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) => {
+    if (event.pointerType === "pen") {
+      this.clearPenHoverState();
+    }
+  };
+
   removePointer = (event: React.PointerEvent<HTMLElement> | PointerEvent) => {
     if (touchTimeout) {
       this.resetContextMenuTimer();
+    }
+
+    if (event.pointerType === "pen") {
+      this.activePenPointerIds.delete(event.pointerId);
+      if (event.type === "pointercancel") {
+        this.clearPenHoverState();
+      }
     }
 
     if (event.type === "pointercancel") {
@@ -6886,6 +6949,14 @@ class App extends React.Component<AppProps, AppState> {
 
     this.updateMultiTouchGesture(event);
 
+    if (event.pointerType === "pen") {
+      this.handlePenHoverOrMove(event);
+    }
+
+    if (event.pointerType === "touch" && this.activePenPointerIds.size > 0) {
+      return;
+    }
+
     if (this.pan.isNavigating()) {
       return;
     }
@@ -7579,6 +7650,28 @@ class App extends React.Component<AppProps, AppState> {
       target.setPointerCapture(event.pointerId);
     }
 
+    if (event.pointerType === "pen") {
+      this.activePenPointerIds.add(event.pointerId);
+      this.clearPenHoverState();
+      this.suppressNextBarrelContextMenu = isEraserOrBarrelButton(event);
+    } else {
+      this.suppressNextBarrelContextMenu = false;
+      if (
+        shouldRejectTouchInPenMode({
+          penMode: this.state.penMode,
+          isPenActiveOrHovering: this.isPenActiveOrHovering(),
+          pointerType: event.pointerType,
+          activeToolType: this.state.activeTool.type,
+        })
+      ) {
+        this.updateGestureOnPointerDown(event);
+        if (this.activePenPointerIds.size === 0) {
+          this.maybeCleanupAfterMissingPointerUp(event.nativeEvent);
+        }
+        return;
+      }
+    }
+
     this.maybeCleanupAfterMissingPointerUp(event.nativeEvent);
     // laser pointer is a presentation aid, not an edit — using it while
     // following someone shouldn't break follow
@@ -7629,6 +7722,8 @@ class App extends React.Component<AppProps, AppState> {
     // just a spike, otherwise finalize the freedraw element when the second
     // finger is lifted
     if (
+      !this.state.penMode &&
+      !this.isPenActiveOrHovering() &&
       event.pointerType === "touch" &&
       this.state.newElement &&
       this.state.newElement.type === "freedraw"
@@ -7714,7 +7809,7 @@ class App extends React.Component<AppProps, AppState> {
     this.savePointer(event.clientX, event.clientY, "down");
 
     if (
-      event.button === POINTER_BUTTON.ERASER &&
+      isEraserOrBarrelButton(event) &&
       // must not switch tools while non-interactive (reachable when the
       // active tool is allowed via `interaction.enabled.tools`) or while
       // the active tool is host-controlled
@@ -7767,11 +7862,11 @@ class App extends React.Component<AppProps, AppState> {
       return;
     }
 
-    // only handle left mouse button or touch
+    // only handle left mouse button, touch, or pen eraser/barrel button
     if (
       event.button !== POINTER_BUTTON.MAIN &&
       event.button !== POINTER_BUTTON.TOUCH &&
-      event.button !== POINTER_BUTTON.ERASER
+      !isEraserOrBarrelButton(event)
     ) {
       return;
     }
@@ -7810,13 +7905,13 @@ class App extends React.Component<AppProps, AppState> {
       return;
     }
 
-    const allowOnPointerDown =
-      !this.state.penMode ||
-      event.pointerType !== "touch" ||
-      this.state.activeTool.type === "selection" ||
-      this.state.activeTool.type === "lasso" ||
-      this.state.activeTool.type === "text" ||
-      this.state.activeTool.type === "image";
+    // Also ignore residual touch drawing branch (palm rejection handled earlier)
+    const allowOnPointerDown = !shouldRejectTouchInPenMode({
+      penMode: this.state.penMode,
+      isPenActiveOrHovering: this.isPenActiveOrHovering(),
+      pointerType: event.pointerType,
+      activeToolType: this.state.activeTool.type,
+    });
 
     if (!allowOnPointerDown) {
       return;
@@ -8024,7 +8119,15 @@ class App extends React.Component<AppProps, AppState> {
     event: React.PointerEvent<HTMLElement>,
   ): void => {
     // deal with opening context menu on touch devices
-    if (event.pointerType === "touch") {
+    if (
+      event.pointerType === "touch" &&
+      !shouldRejectTouchInPenMode({
+        penMode: this.state.penMode,
+        isPenActiveOrHovering: this.isPenActiveOrHovering(),
+        pointerType: event.pointerType,
+        activeToolType: this.state.activeTool.type,
+      })
+    ) {
       invalidateContextMenu = false;
 
       if (touchTimeout) {
@@ -8065,6 +8168,12 @@ class App extends React.Component<AppProps, AppState> {
   private updateGestureOnPointerDown(
     event: React.PointerEvent<HTMLElement>,
   ): void {
+    // Track only non-pen pointers so a resting palm plus an active stylus
+    // never turns into a 2-pointer pinch/pan gesture.
+    if (event.pointerType === "pen") {
+      return;
+    }
+
     gesture.pointers.set(event.pointerId, {
       x: event.clientX,
       y: event.clientY,
@@ -8106,10 +8215,7 @@ class App extends React.Component<AppProps, AppState> {
       gesture.lastCenter = center;
 
       const distance = getDistance(Array.from(gesture.pointers.values()));
-      const scaleFactor =
-        this.state.activeTool.type === "freedraw" && this.state.penMode
-          ? 1
-          : distance / gesture.initialDistance;
+      const scaleFactor = distance / gesture.initialDistance;
 
       const nextZoom = scaleFactor
         ? getNormalizedZoom(initialScale * scaleFactor)
@@ -8287,7 +8393,10 @@ class App extends React.Component<AppProps, AppState> {
       y: gridY,
     });
 
-    const simulatePressure = event.pressure === 0.5;
+    const simulatePressure = shouldSimulatePressure(
+      event.pointerType,
+      event.pressure,
+    );
 
     const strokeVariability = this.state.currentItemStrokeVariability;
 
@@ -8306,10 +8415,7 @@ class App extends React.Component<AppProps, AppState> {
       simulatePressure,
       strokeOptions: {
         variability: strokeVariability,
-        streamline:
-          event.pointerType !== "mouse"
-            ? DEFAULT_STROKE_STREAMLINE_PRECISE
-            : DEFAULT_STROKE_STREAMLINE,
+        streamline: getFreedrawStreamlineForPointer(event.pointerType),
       },
       locked: false,
       frameId: topLayerFrame ? topLayerFrame.id : null,
@@ -8995,8 +9101,10 @@ class App extends React.Component<AppProps, AppState> {
   private onPointerMoveFromPointerDownHandler(
     pointerDownState: PointerDownState,
   ) {
-    return withBatchedUpdatesThrottled((event: PointerEvent) => {
+    const pendingFreeDrawSamples: CoalescedPointerSample[] = [];
+    const throttledMove = withBatchedUpdatesThrottled((event: PointerEvent) => {
       if (this.state.openDialog?.name === "elementLinkSelector") {
+        pendingFreeDrawSamples.length = 0;
         return;
       }
       const pointerCoords = viewportCoordsToSceneCoords(event, this.state);
@@ -9322,24 +9430,59 @@ class App extends React.Component<AppProps, AppState> {
         }
 
         if (newElement.type === "freedraw") {
-          const points = newElement.points;
-          const dx = pointerCoords.x - newElement.x;
-          const dy = pointerCoords.y - newElement.y;
+          const drainedSamples =
+            pendingFreeDrawSamples.length > 0
+              ? pendingFreeDrawSamples.splice(0, pendingFreeDrawSamples.length)
+              : null;
+          const samples: CoalescedPointerSample[] = drainedSamples ?? [
+            {
+              clientX: event.clientX,
+              clientY: event.clientY,
+              pressure: event.pressure,
+            },
+          ];
 
-          const lastPoint = points.length > 0 && points[points.length - 1];
-          const discardPoint =
-            lastPoint && lastPoint[0] === dx && lastPoint[1] === dy;
+          let nextPoints: LocalPoint[] | null = null;
+          let nextPressures: number[] | null = null;
+          let lastPoint =
+            newElement.points.length > 0
+              ? newElement.points[newElement.points.length - 1]
+              : undefined;
 
-          if (!discardPoint) {
-            const pressures = newElement.simulatePressure
-              ? newElement.pressures
-              : [...newElement.pressures, event.pressure];
+          for (let i = 0; i < samples.length; i++) {
+            const sample = samples[i];
+            const sampleCoords = viewportCoordsToSceneCoords(
+              sample,
+              this.state,
+            );
+            const dx = sampleCoords.x - newElement.x;
+            const dy = sampleCoords.y - newElement.y;
 
+            if (lastPoint && lastPoint[0] === dx && lastPoint[1] === dy) {
+              continue;
+            }
+
+            if (!nextPoints) {
+              nextPoints = [...newElement.points];
+            }
+            if (!newElement.simulatePressure && !nextPressures) {
+              nextPressures = [...newElement.pressures];
+            }
+
+            const point = pointFrom<LocalPoint>(dx, dy);
+            nextPoints.push(point);
+            if (!newElement.simulatePressure && nextPressures) {
+              nextPressures.push(sample.pressure);
+            }
+            lastPoint = point;
+          }
+
+          if (nextPoints) {
             this.scene.mutateElement(
               newElement,
               {
-                points: [...points, pointFrom<LocalPoint>(dx, dy)],
-                pressures,
+                points: nextPoints,
+                pressures: nextPressures ?? newElement.pressures,
               },
               {
                 informMutation: false,
@@ -9415,6 +9558,28 @@ class App extends React.Component<AppProps, AppState> {
         pointerDownState,
       );
     }, this.ownerWindow);
+
+    return Object.assign(
+      (event: PointerEvent) => {
+        if (
+          event.pointerType === "pen" &&
+          this.state.newElement?.type === "freedraw"
+        ) {
+          const samples = extractCoalescedSamples(event);
+          for (let i = 0; i < samples.length; i++) {
+            pendingFreeDrawSamples.push(samples[i]);
+          }
+        }
+        throttledMove(event);
+      },
+      {
+        flush: () => throttledMove.flush?.(),
+        cancel: () => {
+          pendingFreeDrawSamples.length = 0;
+          throttledMove.cancel?.();
+        },
+      },
+    );
   }
 
   // Returns whether the pointer move happened over either scrollbar
@@ -11018,7 +11183,11 @@ class App extends React.Component<AppProps, AppState> {
     // when it comes with the press (macOS and Linux fire it on mousedown,
     // and the session opens the menu on release if no drag follows), nor
     // when it follows a release that was a drag
-    if (this.pan.consumesContextMenuEvent()) {
+    if (
+      this.pan.consumesContextMenuEvent() ||
+      this.suppressNextBarrelContextMenu
+    ) {
+      this.suppressNextBarrelContextMenu = false;
       return;
     }
     this.openContextMenu({

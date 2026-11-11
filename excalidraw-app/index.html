@@ -2,7 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <% if (typeof VITE_APP_CAPACITOR != 'undefined' && VITE_APP_CAPACITOR ==
+    'true') { %>
+    <title>Excalidraw Pen</title>
+    <% } else { %>
     <title>Excalidraw Whiteboard</title>
+    <% } %>
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, shrink-to-fit=no"
@@ -20,6 +25,8 @@
       name="description"
       content="Excalidraw is a virtual collaborative whiteboard tool that lets you easily sketch diagrams that have a hand-drawn feel to them."
     />
+    <% if (typeof VITE_APP_CAPACITOR == 'undefined' || VITE_APP_CAPACITOR !=
+    'true') { %>
     <meta name="image" content="https://excalidraw.com/og-image-3.png" />
 
     <!-- Open Graph / Facebook -->
@@ -55,6 +62,7 @@
     />
 
     <link rel="canonical" href="https://excalidraw.com" />
+    <% } %>
 
     <!------------------------------------------------------------------------->
     <!--   to minimize white flash on load when user has dark mode enabled   -->
@@ -70,16 +78,21 @@
 
         function getTheme() {
           const theme = window.localStorage.getItem("excalidraw-theme");
+          const effectiveTheme =
+            theme || (window.Capacitor ? "system" : "light");
 
-          if (theme && theme === "system") {
+          if (effectiveTheme === "system") {
             return window.matchMedia("(prefers-color-scheme: dark)").matches
               ? "dark"
               : "light";
           } else {
-            return theme || "light";
+            return effectiveTheme;
           }
         }
 
+        if (window.Capacitor) {
+          document.documentElement.classList.add("excalidraw-capacitor");
+        }
         setTheme(getTheme());
       } catch (e) {
         console.error("Error setting dark mode", e);
@@ -92,12 +105,16 @@
       }
     </style>
 
+    <% if (typeof VITE_APP_CAPACITOR == 'undefined' || VITE_APP_CAPACITOR !=
+    'true') { %>
     <!-- Warmup the connection for Google fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <% } %>
 
     <!------------------------------------------------------------------------->
-    <% if (typeof PROD != 'undefined' && PROD == true) { %>
+    <% if (typeof PROD != 'undefined' && PROD == true) { %> <% if (typeof
+    VITE_APP_CAPACITOR == 'undefined' || VITE_APP_CAPACITOR != 'true') { %>
     <script>
       // Redirect Excalidraw+ users which have auto-redirect enabled.
       //
@@ -116,6 +133,7 @@
         window.location.href = "https://app.excalidraw.com";
       }
     </script>
+    <% } %>
 
     <!-- Following placeholder is replaced during the build step -->
     <!-- PLACEHOLDER:EXCALIDRAW_APP_FONTS -->
@@ -172,6 +190,7 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
+        overscroll-behavior: none;
       }
 
       .visually-hidden {
@@ -186,6 +205,7 @@
 
       #root {
         height: 100%;
+        touch-action: none;
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         -khtml-user-select: none;
@@ -195,7 +215,7 @@
       }
 
       @media screen and (min-width: 1200px) {
-        #root {
+        html:not(.excalidraw-capacitor) #root {
           -webkit-touch-callout: default;
           -webkit-user-select: auto;
           -khtml-user-select: auto;
@@ -214,7 +234,8 @@
     </header>
     <div id="root"></div>
     <script type="module" src="index.tsx"></script>
-    <% if (typeof PROD != 'undefined' && PROD == true) { %>
+    <% if (typeof PROD != 'undefined' && PROD == true && (typeof
+    VITE_APP_CAPACITOR == 'undefined' || VITE_APP_CAPACITOR != 'true')) { %>
     <!-- 100% privacy friendly analytics -->
     <script>
       // need to load this script dynamically bcs. of iframe embed tracking

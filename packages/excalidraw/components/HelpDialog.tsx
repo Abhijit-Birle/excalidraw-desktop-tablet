@@ -360,6 +360,14 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
               shortcuts={[getShortcutKey("CtrlOrCmd+Delete")]}
             />
             <Shortcut
+              label={t("recentFiles.newDiagram")}
+              shortcuts={[getShortcutKey("CtrlOrCmd+Alt+N")]}
+            />
+            <Shortcut
+              label={t("recentFiles.menuItem")}
+              shortcuts={[getShortcutKey("CtrlOrCmd+Shift+O")]}
+            />
+            <Shortcut
               label={t("labels.delete")}
               shortcuts={[getShortcutKey("Delete")]}
             />

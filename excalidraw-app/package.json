@@ -26,6 +26,11 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
+    "@capacitor/status-bar": "^8.0.4",
     "@excalidraw/random-username": "1.0.0",
     "@sentry/browser": "9.0.1",
     "callsites": "4.2.0",
@@ -44,6 +49,7 @@
     "build-node": "node ./scripts/build-node.js",
     "build:app:docker": "cross-env VITE_APP_DISABLE_SENTRY=true vite build",
     "build:app": "cross-env VITE_APP_GIT_SHA=$VERCEL_GIT_COMMIT_SHA cross-env VITE_APP_ENABLE_TRACKING=true vite build",
+    "build:android": "cross-env VITE_APP_CAPACITOR=true cross-env VITE_APP_DISABLE_SENTRY=true vite build && yarn build:version",
     "build:version": "node ../scripts/build-version.js",
     "build": "yarn build:app && yarn build:version",
     "start": "yarn && vite",

@@ -554,8 +554,32 @@ export const parseClipboard = async (
   return { text: parsedEventData.value };
 };
 
+export type NativeClipboardImageHandler = (blob: Blob) => Promise<void>;
+
+let nativeClipboardImageHandler: NativeClipboardImageHandler | null = null;
+
+/**
+ * Registers a native fallback (e.g. Android Share sheet) when WebView blocks
+ * binary image writes to `navigator.clipboard.write`.
+ */
+export const registerNativeClipboardImageHandler = (
+  handler: NativeClipboardImageHandler | null,
+) => {
+  nativeClipboardImageHandler = handler;
+};
+
 export const copyBlobToClipboardAsPng = async (blob: Blob | Promise<Blob>) => {
   try {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.clipboard?.write ||
+      typeof ClipboardItem === "undefined"
+    ) {
+      throw new ExcalidrawError(
+        "Clipboard image copy is not supported in this browser or WebView.",
+      );
+    }
+
     // in Safari so far we need to construct the ClipboardItem synchronously
     // (i.e. in the same tick) otherwise browser will complain for lack of
     // user intent. Using a Promise ClipboardItem constructor solves this.
@@ -570,17 +594,37 @@ export const copyBlobToClipboardAsPng = async (blob: Blob | Promise<Blob>) => {
       }),
     ]);
   } catch (error: any) {
+    let finalError: any = error;
     // if we're using a Promise ClipboardItem, let's try constructing
     // with resolution value instead
-    if (isPromiseLike(blob)) {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          [MIME_TYPES.png]: await blob,
-        }),
-      ]);
-    } else {
-      throw error;
+    if (
+      isPromiseLike(blob) &&
+      typeof navigator !== "undefined" &&
+      navigator.clipboard?.write &&
+      typeof ClipboardItem !== "undefined"
+    ) {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            [MIME_TYPES.png]: await blob,
+          }),
+        ]);
+        return;
+      } catch (fallbackError) {
+        finalError = fallbackError;
+      }
     }
+
+    if (nativeClipboardImageHandler) {
+      console.warn(
+        "WebView clipboard image write unavailable; falling back to native share.",
+        finalError,
+      );
+      await nativeClipboardImageHandler(await Promise.resolve(blob));
+      return;
+    }
+
+    throw finalError;
   }
 };
 

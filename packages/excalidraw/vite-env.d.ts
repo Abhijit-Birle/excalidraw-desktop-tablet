@@ -37,6 +37,7 @@ interface ImportMetaEnv {
   //Debug flags
 
   VITE_APP_DISABLE_SENTRY: string;
+  VITE_APP_CAPACITOR?: string;
   // Set this flag to false if you want to open the overlay by default
   VITE_APP_COLLAPSE_OVERLAY: string;
   // Enable eslint in dev server

@@ -22,6 +22,7 @@ import Trans from "@excalidraw/excalidraw/components/Trans";
 import {
   APP_NAME,
   EVENT,
+  KEYS,
   VERSION_TIMEOUT,
   debounce,
   getVersion,
@@ -33,6 +34,7 @@ import {
   isDevEnv,
 } from "@excalidraw/common";
 import polyfill from "@excalidraw/excalidraw/polyfill";
+import { getShortcutKey } from "@excalidraw/excalidraw/shortcut";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadFromBlob } from "@excalidraw/excalidraw/data/blob";
 import { t } from "@excalidraw/excalidraw/i18n";
@@ -46,15 +48,20 @@ import {
   exportToPlus,
   share,
   youtubeIcon,
+  historyIcon,
+  PlusIcon,
 } from "@excalidraw/excalidraw/components/icons";
-import { isElementLink } from "@excalidraw/element";
+import {
+  getNonDeletedElements,
+  isElementLink,
+  isInitializedImageElement,
+  newElementWith,
+} from "@excalidraw/element";
 import {
   bumpElementVersions,
   restoreAppState,
   restoreElements,
 } from "@excalidraw/excalidraw/data/restore";
-import { newElementWith } from "@excalidraw/element";
-import { isInitializedImageElement } from "@excalidraw/element";
 import clsx from "clsx";
 import {
   parseLibraryTokensFromUrl,
@@ -64,6 +71,7 @@ import {
 import type { RemoteExcalidrawElement } from "@excalidraw/excalidraw/data/reconcile";
 import type { RestoredDataState } from "@excalidraw/excalidraw/data/restore";
 import type {
+  ExcalidrawElement,
   FileId,
   NonDeletedExcalidrawElement,
   OrderedExcalidrawElement,
@@ -106,6 +114,7 @@ import {
   ExportToExcalidrawPlus,
   exportToExcalidrawPlus,
 } from "./components/ExportToExcalidrawPlus";
+import { RecentFilesDialog } from "./components/RecentFilesDialog";
 import { TopErrorBoundary } from "./components/TopErrorBoundary";
 
 import {
@@ -129,6 +138,8 @@ import {
   LocalData,
   localStorageQuotaExceededAtom,
 } from "./data/LocalData";
+import { getUniqueUntitledDateName, RecentFiles } from "./data/recentFiles";
+
 import { isBrowserStorageStateNewer } from "./data/tabSync";
 import { ShareDialog, shareDialogStateAtom } from "./share/ShareDialog";
 import CollabError, { collabErrorIndicatorAtom } from "./collab/CollabError";
@@ -148,7 +159,14 @@ import "./index.scss";
 
 import { ExcalidrawPlusPromoBanner } from "./components/ExcalidrawPlusPromoBanner";
 import { AppSidebar } from "./components/AppSidebar";
+import {
+  getCapacitorFormFactor,
+  initCapacitorBridge,
+  isCapacitorNative,
+} from "./capacitor/nativeBridge";
+import { registerCapacitorFileHandlers } from "./data/capacitorFiles";
 
+import type { RecentFileRecord } from "./data/recentFiles";
 import type { CollabAPI } from "./collab/Collab";
 
 polyfill();
@@ -214,6 +232,39 @@ const shareableLinkConfirmDialog = {
   color: "danger",
 } as const;
 
+const snapshotRestoredLocalSceneAndRotate = async (
+  elements: readonly ExcalidrawElement[],
+  appState: AppState,
+) => {
+  const nonDeleted = getNonDeletedElements(elements);
+  if (nonDeleted.length > 0) {
+    const fileIds = nonDeleted.reduce((acc, el) => {
+      if (isInitializedImageElement(el) && el.fileId) {
+        acc.push(el.fileId);
+      }
+      return acc;
+    }, [] as FileId[]);
+    const files: BinaryFiles = {};
+    if (fileIds.length > 0) {
+      try {
+        const { loadedFiles } = await LocalData.fileStorage.getFiles(fileIds);
+        loadedFiles.forEach((file) => {
+          files[file.id] = file;
+        });
+      } catch (error) {
+        console.warn("Recent files: failed loading files for snapshot", error);
+      }
+    }
+    await RecentFiles.saveSnapshot({
+      sceneId: RecentFiles.getCurrentSceneId(),
+      elements: nonDeleted,
+      appState,
+      files,
+    });
+  }
+  RecentFiles.rotateCurrentSceneId();
+};
+
 const initializeScene = async (opts: {
   collabAPI: CollabAPI | null;
   excalidrawAPI: ExcalidrawImperativeAPI;
@@ -259,6 +310,12 @@ const initializeScene = async (opts: {
       (await openConfirmModal(shareableLinkConfirmDialog))
     ) {
       if (jsonBackendMatch) {
+        if (!roomLinkData) {
+          await snapshotRestoredLocalSceneAndRotate(
+            scene.elements,
+            scene.appState as AppState,
+          );
+        }
         const imported = await importFromBackend(
           jsonBackendMatch[1],
           jsonBackendMatch[2],
@@ -312,6 +369,10 @@ const initializeScene = async (opts: {
         !scene.elements.length ||
         (await openConfirmModal(shareableLinkConfirmDialog))
       ) {
+        await snapshotRestoredLocalSceneAndRotate(
+          scene.elements,
+          scene.appState as AppState,
+        );
         return { scene: data, isExternalScene };
       }
     } catch (error: any) {
@@ -396,6 +457,74 @@ const ExcalidrawWrapper = () => {
   }
 
   const debugCanvasRef = useRef<HTMLCanvasElement>(null);
+  const appContainerRef = useRef<HTMLDivElement>(null);
+  const editorContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isRecentFilesOpen, setIsRecentFilesOpen] = useState(false);
+  const isRecentFilesOpenRef = useRef(isRecentFilesOpen);
+  isRecentFilesOpenRef.current = isRecentFilesOpen;
+  const isNativeCapacitor = isCapacitorNative();
+  const pendingClearCanvasConfirmRef = useRef(false);
+  const isSceneUntouchedRef = useRef(true);
+  const isTransitioningSceneRef = useRef(false);
+  type OutgoingSceneSnapshot = {
+    sceneId: string;
+    elements: readonly ExcalidrawElement[];
+    elementIds: Set<string>;
+    appState: AppState;
+    files: BinaryFiles;
+    nonDeletedCount: number;
+  };
+  const emptyBaselineRef = useRef<{
+    elementsCount: number;
+    name: string | null;
+    viewBackgroundColor: AppState["viewBackgroundColor"];
+    gridModeEnabled: AppState["gridModeEnabled"];
+  } | null>(null);
+  const newSceneRef = useRef<
+    (options?: {
+      outgoingScene?: OutgoingSceneSnapshot;
+      fromReset?: boolean;
+    }) => Promise<void> | void
+  >(() => {});
+  const lastSceneRef = useRef<OutgoingSceneSnapshot | null>(null);
+
+  const getHostWindow = useCallback(
+    () => appContainerRef.current?.ownerDocument?.defaultView ?? undefined,
+    [],
+  );
+
+  const focusEditorCanvas = useCallback(() => {
+    const container =
+      editorContainerRef.current ??
+      appContainerRef.current?.querySelector<HTMLElement>(
+        ".excalidraw-container",
+      );
+    if (!container) {
+      return;
+    }
+    const win =
+      container.ownerDocument?.defaultView ??
+      appContainerRef.current?.ownerDocument?.defaultView;
+    container.focus({ preventScroll: true });
+    win?.requestAnimationFrame(() => {
+      container.focus({ preventScroll: true });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!excalidrawAPI) {
+      return;
+    }
+    const unsubscribe = excalidrawAPI.onEvent(
+      "editor:mount",
+      ({ container }) => {
+        editorContainerRef.current = container;
+      },
+    );
+    return () => {
+      unsubscribe();
+    };
+  }, [excalidrawAPI]);
 
   useEffect(() => {
     trackEvent("load", "frame", getFrame());
@@ -405,11 +534,173 @@ const ExcalidrawWrapper = () => {
     }, VERSION_TIMEOUT);
   }, []);
 
-  const [, setShareDialogState] = useAtom(shareDialogStateAtom);
+  const [shareDialogState, setShareDialogState] = useAtom(shareDialogStateAtom);
+  const shareDialogStateRef = useRef(shareDialogState);
+  shareDialogStateRef.current = shareDialogState;
   const [collabAPI] = useAtom(collabAPIAtom);
   const [isCollaborating] = useAtomWithInitialValue(isCollaboratingAtom, () => {
     return isCollaborationLink(window.location.href);
   });
+  const isCollaboratingRef = useRef(isCollaborating);
+  isCollaboratingRef.current =
+    isCollaborating || Boolean(collabAPI?.isCollaborating());
+
+  useEffect(() => {
+    const unsubscribe = LocalData.onAfterSave((elements, appState, files) => {
+      if (isCollaboratingRef.current) {
+        return;
+      }
+      void RecentFiles.saveSnapshot({
+        elements,
+        appState,
+        files,
+        isCollaborating: isCollaboratingRef.current,
+        hostWindow: getHostWindow(),
+      });
+    });
+
+    return () => {
+      unsubscribe();
+      RecentFiles.cancelPendingThumbnails();
+    };
+  }, [getHostWindow]);
+
+  useEffect(() => {
+    if (!isNativeCapacitor) {
+      return;
+    }
+
+    const unregisterFiles = registerCapacitorFileHandlers({
+      getOwnerNode: () => appContainerRef.current,
+      onSavedToDevice: ({ fileName }) => {
+        excalidrawAPI?.setToast({
+          message: t("recentFiles.savedToDocuments", { filename: fileName }),
+          closable: true,
+          duration: 3500,
+        });
+      },
+    });
+
+    const cleanupBridge = initCapacitorBridge({
+      onFlushAndSnapshot: () => {
+        LocalData.flushSave();
+        if (excalidrawAPI && !isCollaboratingRef.current) {
+          void RecentFiles.saveSnapshot({
+            elements: excalidrawAPI.getSceneElements(),
+            appState: excalidrawAPI.getAppState(),
+            files: excalidrawAPI.getFiles(),
+            isCollaborating: isCollaboratingRef.current,
+            hostWindow: getHostWindow(),
+          });
+        }
+      },
+      onStoragePersistRefused: () => {
+        excalidrawAPI?.setToast({
+          message: t("recentFiles.storageNotPersisted"),
+          closable: true,
+          duration: 5000,
+        });
+      },
+      onHandleBackButton: () => {
+        if (isRecentFilesOpenRef.current) {
+          setIsRecentFilesOpen(false);
+          return true;
+        }
+        if (shareDialogStateRef.current.isOpen) {
+          setShareDialogState({ isOpen: false });
+          return true;
+        }
+
+        const appState = excalidrawAPI?.getAppState();
+        const doc = appContainerRef.current?.ownerDocument;
+        const win = doc?.defaultView;
+        const hasOpenOverlay = Boolean(
+          appState?.openDialog ||
+            appState?.openMenu ||
+            appState?.openPopup ||
+            appState?.openSidebar ||
+            appState?.contextMenu ||
+            doc?.querySelector(".Modal, .Dialog, .popover, .dropdown-menu"),
+        );
+        if (hasOpenOverlay && doc && win) {
+          const dispatchTarget = doc.activeElement ?? doc;
+          dispatchTarget.dispatchEvent(
+            new win.KeyboardEvent(EVENT.KEYDOWN, {
+              key: KEYS.ESCAPE,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+          return true;
+        }
+        return false;
+      },
+    });
+
+    return () => {
+      cleanupBridge();
+      unregisterFiles();
+    };
+  }, [excalidrawAPI, getHostWindow, isNativeCapacitor, setShareDialogState]);
+
+  useEffect(() => {
+    const doc = appContainerRef.current?.ownerDocument;
+    const win = doc?.defaultView;
+    if (!doc || !win) {
+      return;
+    }
+
+    let resetConfirmTimer: number | null = null;
+    const markClearConfirmPending = () => {
+      if (doc.querySelector(".confirm-dialog")) {
+        pendingClearCanvasConfirmRef.current = true;
+        if (resetConfirmTimer !== null) {
+          win.clearTimeout(resetConfirmTimer);
+        }
+        resetConfirmTimer = win.setTimeout(() => {
+          pendingClearCanvasConfirmRef.current = false;
+          resetConfirmTimer = null;
+        }, 0);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event[KEYS.CTRL_OR_CMD] &&
+        event.altKey &&
+        !event.shiftKey &&
+        (event.code === "KeyN" || event.key.toLowerCase() === KEYS.N)
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        void newSceneRef.current();
+        return;
+      }
+      if (
+        event[KEYS.CTRL_OR_CMD] &&
+        event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === KEYS.O
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsRecentFilesOpen((open) => !open);
+        return;
+      }
+      markClearConfirmPending();
+    };
+
+    win.addEventListener(EVENT.KEYDOWN, handleKeyDown, true);
+    win.addEventListener("click", markClearConfirmPending, true);
+
+    return () => {
+      win.removeEventListener(EVENT.KEYDOWN, handleKeyDown, true);
+      win.removeEventListener("click", markClearConfirmPending, true);
+      if (resetConfirmTimer !== null) {
+        win.clearTimeout(resetConfirmTimer);
+      }
+    };
+  }, []);
   const collabError = useAtomValue(collabErrorIndicatorAtom);
   const userToFollow = useAtomValue(userToFollowAtom);
 
@@ -565,12 +856,58 @@ const ExcalidrawWrapper = () => {
     initializeScene({ collabAPI, excalidrawAPI }).then(async (data) => {
       loadImages(data, /* isInitialLoad */ true);
       initialStatePromiseRef.current.promise.resolve(data.scene);
+      if (!collabAPI?.isCollaborating()) {
+        const initialElements = (data.scene?.elements ??
+          []) as readonly ExcalidrawElement[];
+        const nonDeleted = getNonDeletedElements(initialElements);
+        const currentAppState = (data.scene?.appState ||
+          excalidrawAPI.getAppState()) as AppState;
+        if (nonDeleted.length > 0) {
+          isSceneUntouchedRef.current = false;
+          emptyBaselineRef.current = null;
+          lastSceneRef.current = {
+            sceneId: RecentFiles.getCurrentSceneId(),
+            elements: nonDeleted,
+            elementIds: new Set(nonDeleted.map((el) => el.id)),
+            appState: currentAppState,
+            files: data.scene?.files || {},
+            nonDeletedCount: nonDeleted.length,
+          };
+        } else {
+          const defaults = getDefaultAppState();
+          isSceneUntouchedRef.current = true;
+          emptyBaselineRef.current = {
+            elementsCount: initialElements.length,
+            name: currentAppState.name ?? null,
+            viewBackgroundColor:
+              currentAppState.viewBackgroundColor ??
+              defaults.viewBackgroundColor,
+            gridModeEnabled:
+              currentAppState.gridModeEnabled ?? defaults.gridModeEnabled,
+          };
+          lastSceneRef.current = null;
+        }
+      }
     });
 
     const onHashChange = async (event: HashChangeEvent) => {
       event.preventDefault();
       const libraryUrlTokens = parseLibraryTokensFromUrl();
       if (!libraryUrlTokens) {
+        const isCollabUrl = isCollaborationLink(window.location.href);
+        if (!collabAPI?.isCollaborating() && !isCollabUrl) {
+          const outgoingElements = excalidrawAPI.getSceneElements();
+          if (outgoingElements.length > 0) {
+            await RecentFiles.saveSnapshot({
+              sceneId: RecentFiles.getCurrentSceneId(),
+              elements: outgoingElements,
+              appState: excalidrawAPI.getAppState(),
+              files: excalidrawAPI.getFiles(),
+              hostWindow: getHostWindow(),
+            });
+            RecentFiles.rotateCurrentSceneId();
+          }
+        }
         if (
           collabAPI?.isCollaborating() &&
           !isCollaborationLink(window.location.href)
@@ -582,11 +919,42 @@ const ExcalidrawWrapper = () => {
         initializeScene({ collabAPI, excalidrawAPI }).then((data) => {
           loadImages(data);
           if (data.scene) {
+            const restored = restoreElements(data.scene.elements, null, {
+              repairBindings: true,
+            });
+            const restoredAppState = restoreAppState(data.scene.appState, null);
+            if (!isCollabUrl) {
+              const nonDeleted = getNonDeletedElements(restored);
+              if (nonDeleted.length > 0) {
+                isSceneUntouchedRef.current = false;
+                emptyBaselineRef.current = null;
+                lastSceneRef.current = {
+                  sceneId: RecentFiles.getCurrentSceneId(),
+                  elements: nonDeleted,
+                  elementIds: new Set(nonDeleted.map((el) => el.id)),
+                  appState: restoredAppState as AppState,
+                  files: data.scene.files || {},
+                  nonDeletedCount: nonDeleted.length,
+                };
+              } else {
+                const defaults = getDefaultAppState();
+                isSceneUntouchedRef.current = true;
+                emptyBaselineRef.current = {
+                  elementsCount: restored.length,
+                  name: restoredAppState.name ?? null,
+                  viewBackgroundColor:
+                    restoredAppState.viewBackgroundColor ??
+                    defaults.viewBackgroundColor,
+                  gridModeEnabled:
+                    restoredAppState.gridModeEnabled ??
+                    defaults.gridModeEnabled,
+                };
+                lastSceneRef.current = null;
+              }
+            }
             excalidrawAPI.updateScene({
-              elements: restoreElements(data.scene.elements, null, {
-                repairBindings: true,
-              }),
-              appState: restoreAppState(data.scene.appState, null),
+              elements: restored,
+              appState: restoredAppState,
               captureUpdate: CaptureUpdateAction.IMMEDIATELY,
             });
           }
@@ -658,8 +1026,18 @@ const ExcalidrawWrapper = () => {
     };
 
     const visibilityChange = (event: FocusEvent | Event) => {
-      if (event.type === EVENT.BLUR || document.hidden) {
+      const ownerDoc = appContainerRef.current?.ownerDocument ?? document;
+      if (event.type === EVENT.BLUR || ownerDoc.hidden) {
         LocalData.flushSave();
+        if (ownerDoc.hidden && excalidrawAPI && !isCollaboratingRef.current) {
+          void RecentFiles.saveSnapshot({
+            elements: excalidrawAPI.getSceneElements(),
+            appState: excalidrawAPI.getAppState(),
+            files: excalidrawAPI.getFiles(),
+            isCollaborating: isCollaboratingRef.current,
+            hostWindow: getHostWindow(),
+          });
+        }
       }
       if (
         event.type === EVENT.VISIBILITY_CHANGE ||
@@ -685,7 +1063,14 @@ const ExcalidrawWrapper = () => {
         false,
       );
     };
-  }, [isCollabDisabled, collabAPI, excalidrawAPI, setLangCode, loadImages]);
+  }, [
+    isCollabDisabled,
+    collabAPI,
+    excalidrawAPI,
+    setLangCode,
+    loadImages,
+    getHostWindow,
+  ]);
 
   useEffect(() => {
     const unloadHandler = (event: BeforeUnloadEvent) => {
@@ -717,8 +1102,123 @@ const ExcalidrawWrapper = () => {
     appState: AppState,
     files: BinaryFiles,
   ) => {
-    if (collabAPI?.isCollaborating()) {
-      collabAPI.syncElements(elements);
+    const currentIsCollab = Boolean(collabAPI?.isCollaborating());
+    isCollaboratingRef.current = currentIsCollab;
+
+    if (currentIsCollab) {
+      collabAPI?.syncElements(elements);
+    } else {
+      const nonDeletedElements = getNonDeletedElements(elements);
+      const prevScene = lastSceneRef.current;
+
+      if (nonDeletedElements.length > 0) {
+        isSceneUntouchedRef.current = false;
+        emptyBaselineRef.current = null;
+      } else if (isSceneUntouchedRef.current) {
+        const baseline = emptyBaselineRef.current;
+        if (baseline) {
+          const didModifyEmptyScene =
+            elements.length !== baseline.elementsCount ||
+            appState.name !== baseline.name ||
+            appState.viewBackgroundColor !== baseline.viewBackgroundColor ||
+            appState.gridModeEnabled !== baseline.gridModeEnabled;
+          if (didModifyEmptyScene) {
+            isSceneUntouchedRef.current = false;
+            emptyBaselineRef.current = null;
+          }
+        } else if (elements.length > 0) {
+          isSceneUntouchedRef.current = false;
+        }
+      }
+
+      if (prevScene && prevScene.nonDeletedCount > 0) {
+        if (nonDeletedElements.length === 0) {
+          const defaultAppState = getDefaultAppState();
+          const didResetAppState =
+            appState.name === null &&
+            appState.scrollX === defaultAppState.scrollX &&
+            appState.scrollY === defaultAppState.scrollY &&
+            appState.zoom.value === defaultAppState.zoom.value &&
+            appState.viewBackgroundColor ===
+              defaultAppState.viewBackgroundColor &&
+            (prevScene.appState.name !== null ||
+              prevScene.appState.scrollX !== defaultAppState.scrollX ||
+              prevScene.appState.scrollY !== defaultAppState.scrollY ||
+              prevScene.appState.zoom.value !== defaultAppState.zoom.value ||
+              prevScene.appState.viewBackgroundColor !==
+                defaultAppState.viewBackgroundColor ||
+              prevScene.appState.fileHandle !== null);
+
+          if (
+            pendingClearCanvasConfirmRef.current ||
+            didResetAppState ||
+            elements.length === 0
+          ) {
+            pendingClearCanvasConfirmRef.current = false;
+            lastSceneRef.current = {
+              sceneId: prevScene.sceneId,
+              elements,
+              elementIds: new Set(),
+              appState,
+              files,
+              nonDeletedCount: 0,
+            };
+            void newSceneRef.current({
+              outgoingScene: prevScene,
+              fromReset: true,
+            });
+          } else {
+            lastSceneRef.current = {
+              sceneId: prevScene.sceneId,
+              elements,
+              elementIds: new Set(),
+              appState,
+              files,
+              nonDeletedCount: 0,
+            };
+          }
+        } else {
+          const hasAnyPreviousElement = elements.some((el) =>
+            prevScene.elementIds.has(el.id),
+          );
+          if (!hasAnyPreviousElement) {
+            void RecentFiles.saveSnapshot({
+              sceneId: prevScene.sceneId,
+              elements: prevScene.elements,
+              appState: prevScene.appState,
+              files: prevScene.files,
+              hostWindow: getHostWindow(),
+            });
+            const nextSceneId = RecentFiles.rotateCurrentSceneId();
+            lastSceneRef.current = {
+              sceneId: nextSceneId,
+              elements,
+              elementIds: new Set(nonDeletedElements.map((el) => el.id)),
+              appState,
+              files,
+              nonDeletedCount: nonDeletedElements.length,
+            };
+          } else {
+            lastSceneRef.current = {
+              sceneId: RecentFiles.getCurrentSceneId(),
+              elements,
+              elementIds: new Set(nonDeletedElements.map((el) => el.id)),
+              appState,
+              files,
+              nonDeletedCount: nonDeletedElements.length,
+            };
+          }
+        }
+      } else if (nonDeletedElements.length > 0) {
+        lastSceneRef.current = {
+          sceneId: RecentFiles.getCurrentSceneId(),
+          elements,
+          elementIds: new Set(nonDeletedElements.map((el) => el.id)),
+          appState,
+          files,
+          nonDeletedCount: nonDeletedElements.length,
+        };
+      }
     }
 
     // this check is redundant, but since this is a hot path, it's best
@@ -888,6 +1388,286 @@ const ExcalidrawWrapper = () => {
   //   // console.log("onExport");
   // };
 
+  const applySceneToEditor = useCallback(
+    async (options: {
+      sceneId: string;
+      elements: readonly ExcalidrawElement[];
+      appState: Partial<AppState>;
+      files?: BinaryFiles;
+      untouched?: boolean;
+      closeRecentFiles?: boolean;
+      focusCanvas?: boolean;
+    }) => {
+      if (!excalidrawAPI) {
+        return;
+      }
+
+      const restoredElements = restoreElements(options.elements, null, {
+        repairBindings: true,
+        deleteInvisibleElements: true,
+      });
+      const restoredAppState = {
+        ...restoreAppState(options.appState, excalidrawAPI.getAppState()),
+        selectedElementIds: {},
+        selectedGroupIds: {},
+        editingGroupId: null,
+        fileHandle: null,
+        openMenu: null,
+        openDialog: null,
+      } as AppState;
+
+      const restoredFiles = Object.values(options.files || {});
+      if (restoredFiles.length > 0) {
+        excalidrawAPI.addFiles(restoredFiles);
+      }
+
+      RecentFiles.setCurrentSceneId(options.sceneId);
+
+      const nonDeleted = getNonDeletedElements(restoredElements);
+      lastSceneRef.current = {
+        sceneId: options.sceneId,
+        elements: restoredElements,
+        elementIds: new Set(nonDeleted.map((el) => el.id)),
+        appState: restoredAppState,
+        files: options.files || {},
+        nonDeletedCount: nonDeleted.length,
+      };
+
+      const isUntouched = Boolean(options.untouched && nonDeleted.length === 0);
+      isSceneUntouchedRef.current = isUntouched;
+      emptyBaselineRef.current = isUntouched
+        ? {
+            elementsCount: restoredElements.length,
+            name: restoredAppState.name ?? null,
+            viewBackgroundColor: restoredAppState.viewBackgroundColor,
+            gridModeEnabled: restoredAppState.gridModeEnabled,
+          }
+        : null;
+
+      excalidrawAPI.updateScene({
+        elements: restoredElements,
+        appState: restoredAppState,
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      excalidrawAPI.history.clear();
+      LocalData.save(
+        restoredElements,
+        restoredAppState,
+        excalidrawAPI.getFiles(),
+        () => {},
+      );
+      LocalData.flushSave();
+
+      if (options.closeRecentFiles) {
+        setIsRecentFilesOpen(false);
+      }
+      if (options.focusCanvas) {
+        focusEditorCanvas();
+      }
+    },
+    [excalidrawAPI, focusEditorCanvas],
+  );
+
+  const newScene = useCallback(
+    async (options?: {
+      outgoingScene?: OutgoingSceneSnapshot;
+      fromReset?: boolean;
+    }) => {
+      if (!excalidrawAPI || isTransitioningSceneRef.current) {
+        return;
+      }
+      if (collabAPI?.isCollaborating()) {
+        if (!options?.fromReset) {
+          excalidrawAPI.setToast({
+            message: t("recentFiles.newCollabBlocked"),
+            closable: true,
+            duration: 4000,
+          });
+        }
+        return;
+      }
+
+      isTransitioningSceneRef.current = true;
+      try {
+        const hostWindow = getHostWindow();
+        const defaults = getDefaultAppState();
+        const currentEditorAppState = excalidrawAPI.getAppState();
+        const outgoingElements =
+          options?.outgoingScene?.elements ?? excalidrawAPI.getSceneElements();
+        const outgoingAppState =
+          options?.outgoingScene?.appState ?? currentEditorAppState;
+        const outgoingFiles =
+          options?.outgoingScene?.files ?? excalidrawAPI.getFiles();
+        const outgoingSceneId =
+          options?.outgoingScene?.sceneId ?? RecentFiles.getCurrentSceneId();
+        const nonDeletedOutgoing = getNonDeletedElements(outgoingElements);
+
+        const savedOutgoing =
+          nonDeletedOutgoing.length > 0
+            ? await RecentFiles.saveSnapshot({
+                sceneId: outgoingSceneId,
+                elements: outgoingElements,
+                appState: outgoingAppState,
+                files: outgoingFiles,
+                hostWindow,
+              })
+            : null;
+
+        if (
+          !options?.fromReset &&
+          nonDeletedOutgoing.length === 0 &&
+          isSceneUntouchedRef.current
+        ) {
+          await applySceneToEditor({
+            sceneId: outgoingSceneId,
+            elements: [],
+            appState: {
+              ...defaults,
+              name: currentEditorAppState.name,
+              theme: currentEditorAppState.theme,
+            },
+            files: {},
+            untouched: true,
+            closeRecentFiles: true,
+            focusCanvas: true,
+          });
+          return;
+        }
+
+        const createdRecord = await RecentFiles.createNewSceneRecord({
+          appState: {
+            viewBackgroundColor: defaults.viewBackgroundColor,
+            gridSize: defaults.gridSize,
+            gridStep: defaults.gridStep,
+            gridModeEnabled: defaults.gridModeEnabled,
+            scrollX: defaults.scrollX,
+            scrollY: defaults.scrollY,
+            zoom: defaults.zoom,
+          },
+          isCollaborating: isCollaboratingRef.current,
+          minUpdatedAt: savedOutgoing ? savedOutgoing.updatedAt + 1 : 0,
+          extraExistingNames: savedOutgoing ? [savedOutgoing.name] : [],
+        });
+
+        const nextSceneId =
+          createdRecord?.id ?? RecentFiles.getCurrentSceneId();
+        const nextName =
+          createdRecord?.name ??
+          getUniqueUntitledDateName(
+            savedOutgoing ? [savedOutgoing.name] : [],
+            Date.now(),
+          );
+
+        await applySceneToEditor({
+          sceneId: nextSceneId,
+          elements: [],
+          appState: {
+            ...defaults,
+            ...(createdRecord?.appState ?? {}),
+            name: nextName,
+            theme: currentEditorAppState.theme,
+          },
+          files: {},
+          untouched: true,
+          closeRecentFiles: true,
+          focusCanvas: true,
+        });
+      } finally {
+        isTransitioningSceneRef.current = false;
+      }
+    },
+    [excalidrawAPI, collabAPI, getHostWindow, applySceneToEditor],
+  );
+  newSceneRef.current = newScene;
+
+  const handleOpenRecentFile = useCallback(
+    async (record: RecentFileRecord) => {
+      if (!excalidrawAPI || isTransitioningSceneRef.current) {
+        return;
+      }
+      if (collabAPI?.isCollaborating()) {
+        excalidrawAPI.setToast({
+          message: t("recentFiles.collabBlocked"),
+          closable: true,
+          duration: 4000,
+        });
+        return;
+      }
+
+      isTransitioningSceneRef.current = true;
+      try {
+        const hostWindow = getHostWindow();
+        const outgoingElements = excalidrawAPI.getSceneElements();
+        if (outgoingElements.length > 0) {
+          await RecentFiles.saveSnapshot({
+            sceneId: RecentFiles.getCurrentSceneId(),
+            elements: outgoingElements,
+            appState: excalidrawAPI.getAppState(),
+            files: excalidrawAPI.getFiles(),
+            hostWindow,
+          });
+        }
+
+        await RecentFiles.touchRecentFile(record.id);
+        await applySceneToEditor({
+          sceneId: record.id,
+          elements: record.elements,
+          appState: record.appState,
+          files: record.files,
+          untouched: false,
+          closeRecentFiles: true,
+          focusCanvas: true,
+        });
+      } finally {
+        isTransitioningSceneRef.current = false;
+      }
+    },
+    [excalidrawAPI, collabAPI, getHostWindow, applySceneToEditor],
+  );
+
+  const handleRenameRecentFile = useCallback(
+    async (id: string, nextName: string): Promise<RecentFileRecord | null> => {
+      const updated = await RecentFiles.renameRecentFile(id, nextName);
+      if (!updated) {
+        return null;
+      }
+
+      if (id === RecentFiles.getCurrentSceneId() && excalidrawAPI) {
+        const currentAppState = excalidrawAPI.getAppState();
+        const syncedAppState = {
+          ...currentAppState,
+          name: updated.name,
+        };
+        if (lastSceneRef.current && lastSceneRef.current.sceneId === id) {
+          lastSceneRef.current = {
+            ...lastSceneRef.current,
+            appState: syncedAppState,
+          };
+        }
+        if (emptyBaselineRef.current) {
+          emptyBaselineRef.current = {
+            ...emptyBaselineRef.current,
+            name: updated.name,
+          };
+        }
+        excalidrawAPI.updateScene({
+          appState: { name: updated.name },
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+        LocalData.save(
+          excalidrawAPI.getSceneElements(),
+          syncedAppState,
+          excalidrawAPI.getFiles(),
+          () => {},
+        );
+        LocalData.flushSave();
+      }
+
+      return updated;
+    },
+    [excalidrawAPI],
+  );
+
   // browsers generally prevent infinite self-embedding, there are
   // cases where it still happens, and while we disallow self-embedding
   // by not whitelisting our own origin, this serves as an additional guard
@@ -948,6 +1728,7 @@ const ExcalidrawWrapper = () => {
 
   return (
     <div
+      ref={appContainerRef}
       style={{ height: "100%" }}
       className={clsx("excalidraw-app", {
         "is-collaborating": isCollaborating,
@@ -962,35 +1743,38 @@ const ExcalidrawWrapper = () => {
         isCollaborating={isCollaborating}
         onPointerUpdate={collabAPI?.onPointerUpdate}
         UIOptions={{
+          getFormFactor: isNativeCapacitor ? getCapacitorFormFactor : undefined,
           canvasActions: {
             toggleTheme: true,
-            export: {
-              onExportToBackend,
-              renderCustomUI: excalidrawAPI
-                ? (elements, appState, files) => {
-                    return (
-                      <ExportToExcalidrawPlus
-                        elements={elements}
-                        appState={appState}
-                        files={files}
-                        name={excalidrawAPI.getName()}
-                        onError={(error) => {
-                          excalidrawAPI?.updateScene({
-                            appState: {
-                              errorMessage: error.message,
-                            },
-                          });
-                        }}
-                        onSuccess={() => {
-                          excalidrawAPI.updateScene({
-                            appState: { openDialog: null },
-                          });
-                        }}
-                      />
-                    );
-                  }
-                : undefined,
-            },
+            export: isNativeCapacitor
+              ? undefined
+              : {
+                  onExportToBackend,
+                  renderCustomUI: excalidrawAPI
+                    ? (elements, appState, files) => {
+                        return (
+                          <ExportToExcalidrawPlus
+                            elements={elements}
+                            appState={appState}
+                            files={files}
+                            name={excalidrawAPI.getName()}
+                            onError={(error) => {
+                              excalidrawAPI?.updateScene({
+                                appState: {
+                                  errorMessage: error.message,
+                                },
+                              });
+                            }}
+                            onSuccess={() => {
+                              excalidrawAPI.updateScene({
+                                appState: { openDialog: null },
+                              });
+                            }}
+                          />
+                        );
+                      }
+                    : undefined,
+                },
           },
         }}
         langCode={langCode}
@@ -1001,26 +1785,47 @@ const ExcalidrawWrapper = () => {
         theme={editorTheme}
         onThemeChange={setAppTheme}
         renderTopRightUI={(isMobile) => {
-          if (isMobile || !collabAPI || !isCollabAvailable) {
+          if (isMobile) {
             return null;
           }
 
           return (
             <div className="excalidraw-ui-top-right">
-              {excalidrawAPI?.getEditorInterface().formFactor === "desktop" && (
-                <ExcalidrawPlusPromoBanner
-                  isSignedIn={isExcalidrawPlusSignedUser}
-                />
-              )}
+              <button
+                type="button"
+                className="excalidraw-recent-topbar-btn"
+                onClick={() => setIsRecentFilesOpen(true)}
+                title={`${t("recentFiles.menuItem")} (${getShortcutKey(
+                  "CtrlOrCmd+Shift+O",
+                )})`}
+                aria-label={t("recentFiles.menuItem")}
+              >
+                {historyIcon}
+                <span>{t("recentFiles.menuItem")}</span>
+              </button>
 
-              {collabError.message && <CollabError collabError={collabError} />}
-              <LiveCollaborationTrigger
-                isCollaborating={isCollaborating}
-                onSelect={() =>
-                  setShareDialogState({ isOpen: true, type: "share" })
-                }
-                editorInterface={editorInterface}
-              />
+              {!isNativeCapacitor &&
+                excalidrawAPI?.getEditorInterface().formFactor ===
+                  "desktop" && (
+                  <ExcalidrawPlusPromoBanner
+                    isSignedIn={isExcalidrawPlusSignedUser}
+                  />
+                )}
+
+              {collabAPI && isCollabAvailable && (
+                <>
+                  {collabError.message && (
+                    <CollabError collabError={collabError} />
+                  )}
+                  <LiveCollaborationTrigger
+                    isCollaborating={isCollaborating}
+                    onSelect={() =>
+                      setShareDialogState({ isOpen: true, type: "share" })
+                    }
+                    editorInterface={editorInterface}
+                  />
+                </>
+              )}
             </div>
           );
         }}
@@ -1037,6 +1842,8 @@ const ExcalidrawWrapper = () => {
       >
         <AppMainMenu
           onCollabDialogOpen={onCollabDialogOpen}
+          onNewDiagram={() => void newScene()}
+          onRecentFilesDialogOpen={() => setIsRecentFilesOpen(true)}
           isCollaborating={isCollaborating}
           isCollabEnabled={isCollabAvailable}
           theme={appTheme}
@@ -1110,6 +1917,15 @@ const ExcalidrawWrapper = () => {
 
         <AppSidebar />
 
+        <RecentFilesDialog
+          isOpen={isRecentFilesOpen}
+          isCollaborating={isCollaborating}
+          onClose={() => setIsRecentFilesOpen(false)}
+          onNewDiagram={newScene}
+          onOpenRecord={handleOpenRecentFile}
+          onRenameRecord={handleRenameRecentFile}
+        />
+
         {errorMessage && (
           <ErrorDialog onClose={() => setErrorMessage("")}>
             {errorMessage}
@@ -1118,6 +1934,26 @@ const ExcalidrawWrapper = () => {
 
         <CommandPalette
           customCommandPaletteItems={[
+            {
+              label: t("recentFiles.newDiagram"),
+              category: DEFAULT_CATEGORIES.app,
+              shortcut: getShortcutKey("CtrlOrCmd+Alt+N"),
+              icon: PlusIcon,
+              keywords: ["new", "diagram", "blank", "empty", "create"],
+              perform: () => {
+                void newScene();
+              },
+            },
+            {
+              label: t("recentFiles.menuItem"),
+              category: DEFAULT_CATEGORIES.app,
+              shortcut: getShortcutKey("CtrlOrCmd+Shift+O"),
+              icon: historyIcon,
+              keywords: ["recent", "files", "history", "open", "diagrams"],
+              perform: () => {
+                setIsRecentFilesOpen(true);
+              },
+            },
             {
               label: t("labels.liveCollaboration"),
               category: DEFAULT_CATEGORIES.app,

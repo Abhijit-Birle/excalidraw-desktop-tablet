@@ -8,6 +8,10 @@ interface Window {
   gtag: Function;
   sa_event: Function;
   fathom: { trackEvent: Function };
+  Capacitor?: {
+    isNativePlatform?: () => boolean;
+    getPlatform?: () => string;
+  };
 }
 
 interface CanvasRenderingContext2D {
