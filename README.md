@@ -1,63 +1,47 @@
-<a href="https://excalidraw.com/" target="_blank" rel="noopener">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" alt="Excalidraw" srcset="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github/excalidraw_github_cover_2_dark.png" />
-    <img alt="Excalidraw" src="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github/excalidraw_github_cover_2.png" />
-  </picture>
-</a>
+# excalidraw-desktop-tablet
 
-<h4 align="center">
-  <a href="https://excalidraw.com">Excalidraw Editor</a> |
-  <a href="https://plus.excalidraw.com/blog">Blog</a> |
-  <a href="https://docs.excalidraw.com">Documentation</a> |
-  <a href="https://plus.excalidraw.com">Excalidraw+</a>
-</h4>
+> Unofficial personal, offline-first fork of [Excalidraw](https://github.com/excalidraw/excalidraw) packaged for **macOS** (`Excalidraw.app`) and **Android tablets / S Pen** (`Excalidraw Pen`), with built-in **Recent Files** and **New Diagram** workflows.
 
-<div align="center">
-  <h2>
-    An open source virtual hand-drawn style whiteboard. </br>
-    Collaborative and end-to-end encrypted. </br>
-  <br />
-  </h2>
-</div>
+---
 
-<br />
-<p align="center">
-  <a href="https://github.com/excalidraw/excalidraw/blob/master/LICENSE">
-    <img alt="Excalidraw is released under the MIT license." src="https://img.shields.io/badge/license-MIT-blue.svg"  /></a>
-  <a href="https://www.npmjs.com/package/@excalidraw/excalidraw">
-    <img alt="npm downloads/month" src="https://img.shields.io/npm/dm/@excalidraw/excalidraw"  /></a>
-  <a href="https://docs.excalidraw.com/docs/introduction/contributing">
-    <img alt="PRs welcome!" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat"  /></a>
-  <a href="https://discord.gg/UexuTaE">
-    <img alt="Chat on Discord" src="https://img.shields.io/discord/723672430744174682?color=738ad6&label=Chat%20on%20Discord&logo=discord&logoColor=ffffff&widget=false"/></a>
-  <a href="https://deepwiki.com/excalidraw/excalidraw">
-    <img alt="Ask DeepWiki" src="https://deepwiki.com/badge.svg" /></a>
-  <a href="https://twitter.com/excalidraw">
-    <img alt="Follow Excalidraw on Twitter" src="https://img.shields.io/twitter/follow/excalidraw.svg?label=follow+@excalidraw&style=social&logo=twitter"/></a>
-</p>
+## New Features & Enhancements in This Fork
 
-<div align="center">
-  <figure>
-    <a href="https://excalidraw.com" target="_blank" rel="noopener">
-      <img src="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github%2Fproduct_showcase.png" alt="Product showcase" />
-    </a>
-    <figcaption>
-      <p align="center">
-        Create beautiful hand-drawn like diagrams, wireframes, or whatever you like.
-      </p>
-    </figcaption>
-  </figure>
-</div>
+### 1. Recent Files & Local Snapshots
 
-## Desktop (Mac App) & Android Tablet Setup
+- **Isolated IndexedDB history** (`excalidraw-recent-files-db` in [`excalidraw-app/data/recentFiles.ts`](./excalidraw-app/data/recentFiles.ts)) storing up to **50** recent diagrams with `~200px` PNG thumbnails, relative last-edited timestamps, and copied image binaries.
+- **Quick access**: open from the main menu, the always-visible top-right **Recent files** toolbar button, or **`Ctrl/Cmd + Shift + O`**.
+- **Manage diagrams easily**: inline click-to-rename, open any snapshot with automatic save-before-switch, swipe-left or button delete, two-step **Clear all** confirmation, friendly empty state, and automatic snapshot on scene save, canvas reset, and app backgrounding.
+- **Safe during collaboration**: blocks switching scenes mid-collaboration session.
 
-This fork adds three local-first capabilities on top of upstream Excalidraw:
+### 2. Quick New Diagram (`+ New`)
 
-- **Recent Files & New Diagram (`excalidraw-app`)**: Local IndexedDB recent-files history (up to 50 diagrams with thumbnails, inline rename, delete, `Ctrl/Cmd+Shift+O`, and quick `+ New` / `Ctrl/Cmd+Alt+N` creation).
-- **Offline macOS App (`Excalidraw.app`)**: Standalone native `WKWebView` + embedded loopback server wrapper in [`scripts/mac-app`](./scripts/mac-app) with `.excalidraw` / `.excalidrawlib` file association.
-- **Offline Android Tablet App (`Excalidraw Pen`)**: Capacitor 8 wrapper in [`android-app`](./android-app) & [`capacitor.config.ts`](./capacitor.config.ts) tuned for Android tablets and S Pen (real pressure & coalesced strokes, pen-hover/active palm rejection with two-finger pinch-zoom preserved, barrel-button eraser mapping where WebView exposes secondary stylus button events, `>=44px` touch targets, pinned desktop UI across portrait/landscape rotation, native Documents export & Android Share sheet, and Android back-button / background autosave hooks).
+- Start a fresh diagram from **`+ New`** inside Recent files, **New diagram** in the main menu, or **`Ctrl/Cmd + Alt + N`**.
+- Snapshots your current work first, avoids inserting duplicate entries when starting from an untouched blank canvas, assigns a dated title (`Untitled-YYYY-MM-DD`, deduplicated with `-2`, `-3`, ...), and focuses the canvas immediately without a page reload.
 
-### Prerequisites
+### 3. Native macOS Desktop App (`Excalidraw.app`)
+
+- Native Swift `WKWebView` wrapper in [`scripts/mac-app/`](./scripts/mac-app) embedding the built web app behind a deterministic local loopback server (`127.0.0.1` ports `49191`–`49195`) so `localStorage` and IndexedDB persist across launches.
+- Registers macOS document handling for `.excalidraw` drawings and `.excalidrawlib` libraries (macOS 13.0+).
+
+### 4. Offline Android Tablet & S Pen App (`Excalidraw Pen`)
+
+- **Offline Capacitor 8 wrapper** ([`android-app/`](./android-app), [`capacitor.config.ts`](./capacitor.config.ts)): bundles all `.woff2` fonts locally with zero external CDN runtime dependencies and skips service-worker registration inside Capacitor.
+- **S Pen input & palm rejection** ([`packages/excalidraw/stylus.ts`](./packages/excalidraw/stylus.ts)):
+  - Preserves real stylus pressure (`simulatePressure: false` for `pointerType === "pen"`).
+  - Buffers coalesced high-rate pointer samples (`getCoalescedEvents()`) per animation frame without layout thrash and smooths pen strokes (`PEN_STROKE_STREAMLINE = 0.35`).
+  - Auto-enables palm rejection on pen contact and hover while keeping two-finger pinch-zoom/pan and UI taps working.
+  - Enlarges pen transform handles (`24px`) and maps stylus secondary/eraser buttons where exposed by Android WebView.
+- **Tablet-tuned UI** ([`excalidraw-app/capacitor/`](./excalidraw-app/capacitor)):
+  - Pins desktop layout across portrait and landscape rotation (`>= 600px` width) so rotating the tablet never switches UI modes.
+  - `>= 44px` touch targets across controls, `48px` Undo/Redo buttons, scrollable portrait toolbar, system dark mode support, edge-to-edge fullscreen with display-cutout safe areas, and Android hardware Back button dismissal for open dialogs/menus before minimizing.
+- **Native save, share & autosave** ([`excalidraw-app/data/capacitorFiles.ts`](./excalidraw-app/data/capacitorFiles.ts)):
+  - Exports `.excalidraw`, PNG, and SVG directly into `Documents/Excalidraw` (`@capacitor/filesystem`) and launches the Android Share sheet (`@capacitor/share`), bypassing unreliable WebView blob downloads.
+  - Imports diagrams, libraries, and images via the Android file picker.
+  - Flushes local saves and recent-file snapshots on `@capacitor/app` pause/background transitions and `visibilitychange`.
+
+---
+
+## Prerequisites
 
 - **Common**: Node.js `>= 18.0.0`, Yarn (`yarn install`)
 - **macOS App**: macOS 13.0+ with Xcode Command Line Tools (`xcode-select --install`)
@@ -65,7 +49,7 @@ This fork adds three local-first capabilities on top of upstream Excalidraw:
 
 ---
 
-### Install as a Mac App (`Excalidraw.app`)
+## Build & Install on macOS (`Excalidraw.app`)
 
 1. Install workspace dependencies (first time only):
 
@@ -73,23 +57,23 @@ This fork adds three local-first capabilities on top of upstream Excalidraw:
    yarn install
    ```
 
-2. Build only into `dist/Excalidraw.app`, **or** build and install directly into `/Applications/Excalidraw.app`:
+2. Build into `dist/Excalidraw.app`, **or** build and install directly into `/Applications/Excalidraw.app`:
 
    ```bash
    # Build dist/Excalidraw.app
    yarn build:mac
 
-   # Build and copy to /Applications/Excalidraw.app
+   # Build and install to /Applications/Excalidraw.app
    yarn build:mac:install
    ```
 
-3. Open **Excalidraw** from **Applications** or Spotlight.
+3. Launch **Excalidraw** from **Applications** or Spotlight.
 
-> **Tip**: If `excalidraw-app/build` is already built and you only edited the Swift wrapper in `scripts/mac-app/`, run `node ./scripts/mac-app/build.js --skip-web --install`. To run the standard browser dev server instead, use `yarn start`.
+> **Tip**: If `excalidraw-app/build` is already built and you only changed files under `scripts/mac-app/`, run `node ./scripts/mac-app/build.js --skip-web --install`.
 
 ---
 
-### Build & Install on Android (`Excalidraw Pen`)
+## Build & Install on Android (`Excalidraw Pen`)
 
 1. Install workspace dependencies (first time only):
 
@@ -97,13 +81,13 @@ This fork adds three local-first capabilities on top of upstream Excalidraw:
    yarn install
    ```
 
-2. Build the self-contained offline Capacitor web bundle (all `.woff2` fonts local, service worker disabled) and sync web assets & plugins to [`android-app`](./android-app):
+2. Build the offline Capacitor bundle and sync web assets & plugins to [`android-app/`](./android-app):
 
    ```bash
    yarn build:android
    ```
 
-3. Set `JAVA_HOME` and `ANDROID_HOME` / `ANDROID_SDK_ROOT` (adjust paths if using a custom SDK location):
+3. Export `JAVA_HOME` and `ANDROID_HOME` / `ANDROID_SDK_ROOT`:
 
    ```bash
    export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
@@ -111,7 +95,7 @@ This fork adds three local-first capabilities on top of upstream Excalidraw:
    export ANDROID_SDK_ROOT="$ANDROID_HOME"
    ```
 
-   _(Don't have Android Studio installed on macOS? You can install just the CLI tools via Homebrew:)_
+   _(Without Android Studio on macOS, you can install just the CLI tools via Homebrew:)_
 
    ```bash
    brew install --cask android-commandlinetools
@@ -121,7 +105,7 @@ This fork adds three local-first capabilities on top of upstream Excalidraw:
    sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
    ```
 
-4. Compile the debug APK:
+4. Build the debug APK:
 
    ```bash
    ./android-app/gradlew -p android-app assembleDebug
@@ -129,90 +113,38 @@ This fork adds three local-first capabilities on top of upstream Excalidraw:
 
    Output APK: `android-app/app/build/outputs/apk/debug/app-debug.apk`.
 
-5. **Install onto your Android device / tablet**:
+5. **Install on your tablet / Android device**:
 
    - **Option A — USB (`adb`)**:
 
-     1. On the tablet, enable **Settings → About tablet → Software information → tap Build number 7 times**.
-     2. Open **Settings → Developer options → enable USB debugging** and accept the **Allow USB debugging?** prompt.
-     3. Run:
+     1. Enable **Settings → About tablet → Software information → tap Build number 7 times**.
+     2. Enable **Settings → Developer options → USB debugging** and accept **Allow USB debugging?** on the tablet.
+     3. Install:
 
         ```bash
         adb install -r android-app/app/build/outputs/apk/debug/app-debug.apk
         ```
 
-   - **Option B — Manual sideload (no USB)**: Copy `android-app/app/build/outputs/apk/debug/app-debug.apk` to the tablet, tap it in **Files / My Files**, and allow installing unknown apps when prompted.
+   - **Option B — Manual sideload (no USB)**: Copy `android-app/app/build/outputs/apk/debug/app-debug.apk` onto the tablet, tap it in **My Files / Files**, and allow installing unknown apps when prompted.
 
-## Features
+---
 
-The Excalidraw editor (npm package) supports:
+## Browser Development Mode
 
-- 💯&nbsp;Free & open-source.
-- 🎨&nbsp;Infinite, canvas-based whiteboard.
-- ✍️&nbsp;Hand-drawn like style.
-- 🌓&nbsp;Dark mode.
-- 🏗️&nbsp;Customizable.
-- 📷&nbsp;Image support.
-- 😀&nbsp;Shape libraries support.
-- 🌐&nbsp;Localization (i18n) support.
-- 🖼️&nbsp;Export to PNG, SVG & clipboard.
-- 💾&nbsp;Open format - export drawings as an `.excalidraw` json file.
-- ⚒️&nbsp;Wide range of tools - rectangle, circle, diamond, arrow, line, free-draw, eraser...
-- ➡️&nbsp;Arrow-binding & labeled arrows.
-- 🔙&nbsp;Undo / Redo.
-- 🔍&nbsp;Zoom and panning support.
-
-## Excalidraw.com
-
-The app hosted at [excalidraw.com](https://excalidraw.com) is a minimal showcase of what you can build with Excalidraw. Its [source code](https://github.com/excalidraw/excalidraw/tree/master/excalidraw-app) is part of this repository as well, and the app features:
-
-- 📡&nbsp;PWA support (works offline).
-- 🤼&nbsp;Real-time collaboration.
-- 🔒&nbsp;End-to-end encryption.
-- 💾&nbsp;Local-first support (autosaves to the browser).
-- 🔗&nbsp;Shareable links (export to a readonly link you can share with others).
-
-We'll be adding these features as drop-in plugins for the npm package in the future.
-
-## Quick start
-
-**Note:** following instructions are for installing the Excalidraw [npm package](https://www.npmjs.com/package/@excalidraw/excalidraw) when integrating Excalidraw into your own app. To run the repository locally for development, please refer to our [Development Guide](https://docs.excalidraw.com/docs/introduction/development).
-
-Use `npm` or `yarn` to install the package.
+To run the standard web dev server in your browser instead of the native wrappers:
 
 ```bash
-npm install react react-dom @excalidraw/excalidraw
-# or
-yarn add react react-dom @excalidraw/excalidraw
+yarn install
+yarn start
 ```
 
-Check out our [documentation](https://docs.excalidraw.com/docs/@excalidraw/excalidraw/installation) for more details!
+---
 
-## Contributing
+## Core Whiteboard Features (Upstream Excalidraw)
 
-- Missing something or found a bug? [Report here](https://github.com/excalidraw/excalidraw/issues).
-- Want to contribute? Check out our [contribution guide](https://docs.excalidraw.com/docs/introduction/contributing) or let us know on [Discord](https://discord.gg/UexuTaE).
-- Want to help with translations? See the [translation guide](https://docs.excalidraw.com/docs/introduction/contributing#translating).
+- Infinite canvas with hand-drawn aesthetic, dark mode, shape libraries, i18n, PNG/SVG/clipboard export, and `.excalidraw` JSON format.
+- Full toolset: rectangles, diamonds, ellipses, bound arrows & labeled arrows, text, freedraw, eraser, undo/redo, image embeds, laser pointer, and zoom/pan.
 
-## Integrations
+## License & Attribution
 
-- [VScode extension](https://marketplace.visualstudio.com/items?itemName=pomdtr.excalidraw-editor)
-- [npm package](https://www.npmjs.com/package/@excalidraw/excalidraw)
-
-## Who's integrating Excalidraw
-
-[Google Cloud](https://googlecloudcheatsheet.withgoogle.com/architecture) • [Meta](https://meta.com/) • [CodeSandbox](https://codesandbox.io/) • [Obsidian Excalidraw](https://github.com/zsviczian/obsidian-excalidraw-plugin) • [Replit](https://replit.com/) • [Slite](https://slite.com/) • [Notion](https://notion.so/) • [HackerRank](https://www.hackerrank.com/) • and many others
-
-## Sponsors & support
-
-If you like the project, you can become a sponsor at [Open Collective](https://opencollective.com/excalidraw) or use [Excalidraw+](https://plus.excalidraw.com/).
-
-## Thank you for supporting Excalidraw
-
-[<img src="https://opencollective.com/excalidraw/tiers/sponsors/0/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/0/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/1/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/1/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/2/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/2/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/3/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/3/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/4/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/4/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/5/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/5/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/6/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/6/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/7/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/7/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/8/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/8/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/9/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/9/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/10/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/10/website)
-
-<a href="https://opencollective.com/excalidraw#category-CONTRIBUTE" target="_blank"><img src="https://opencollective.com/excalidraw/tiers/backers.svg?avatarHeight=32"/></a>
-
-Last but not least, we're thankful to these companies for offering their services for free:
-
-[![Vercel](./.github/assets/vercel.svg)](https://vercel.com) [![Sentry](./.github/assets/sentry.svg)](https://sentry.io) [![Crowdin](./.github/assets/crowdin.svg)](https://crowdin.com)
+Based on [Excalidraw](https://github.com/excalidraw/excalidraw). Released under the [MIT License](./LICENSE).
