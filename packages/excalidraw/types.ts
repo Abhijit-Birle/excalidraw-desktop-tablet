@@ -5,6 +5,7 @@ import type {
   MIME_TYPES,
   EditorInterface,
   StrokeWidthKey,
+  PenPressureSensitivity,
 } from "@excalidraw/common";
 
 import type { LinearElementEditor } from "@excalidraw/element";
@@ -443,6 +444,7 @@ export interface AppState {
   // Pen handling
   penMode: boolean;
   penDetected: boolean;
+  penPressureSensitivity: PenPressureSensitivity;
 
   exportBackground: boolean;
   exportEmbedScene: boolean;

@@ -368,6 +368,7 @@ import { LassoTrail } from "../lasso";
 import { EraserTrail } from "../eraser";
 import { getShortcutKey } from "../shortcut";
 import {
+  calibrateStylusPressure,
   extractCoalescedSamples,
   getFreedrawStreamlineForPointer,
   isEraserOrBarrelButton,
@@ -8422,7 +8423,14 @@ class App extends React.Component<AppProps, AppState> {
       points: [pointFrom<LocalPoint>(0, 0)],
       // pressures are only consumed when rendering a real-pressure stroke, so
       // skip persisting them while pressure is being simulated
-      pressures: simulatePressure ? [] : [event.pressure],
+      pressures: simulatePressure
+        ? []
+        : [
+            calibrateStylusPressure(
+              event.pressure,
+              this.state.penPressureSensitivity,
+            ),
+          ],
     });
 
     this.insertNewElement(element);
@@ -9438,7 +9446,10 @@ class App extends React.Component<AppProps, AppState> {
             {
               clientX: event.clientX,
               clientY: event.clientY,
-              pressure: event.pressure,
+              pressure: calibrateStylusPressure(
+                event.pressure,
+                this.state.penPressureSensitivity,
+              ),
             },
           ];
 
@@ -9565,7 +9576,10 @@ class App extends React.Component<AppProps, AppState> {
           event.pointerType === "pen" &&
           this.state.newElement?.type === "freedraw"
         ) {
-          const samples = extractCoalescedSamples(event);
+          const samples = extractCoalescedSamples(
+            event,
+            this.state.penPressureSensitivity,
+          );
           for (let i = 0; i < samples.length; i++) {
             pendingFreeDrawSamples.push(samples[i]);
           }

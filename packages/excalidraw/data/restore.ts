@@ -32,6 +32,7 @@ import {
   STROKE_WIDTH,
   STROKE_WIDTH_KEYS,
   type StrokeWidthKey,
+  PEN_PRESSURE_SENSITIVITIES,
   isTransparent,
   DEFAULT_ZOOM,
 } from "@excalidraw/common";
@@ -1345,6 +1346,11 @@ export const restoreAppState = (
     penDetected:
       localAppState?.penDetected ??
       (appState.penMode ? appState.penDetected ?? false : false),
+    penPressureSensitivity:
+      appState.penPressureSensitivity &&
+      PEN_PRESSURE_SENSITIVITIES.includes(appState.penPressureSensitivity)
+        ? appState.penPressureSensitivity
+        : defaultAppState.penPressureSensitivity,
     activeTool: {
       ...updateActiveTool(
         defaultAppState,

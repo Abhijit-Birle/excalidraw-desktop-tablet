@@ -8,6 +8,7 @@ import type { ExcalidrawFreeDrawElement } from "@excalidraw/element/types";
 import { Excalidraw } from "../index";
 import {
   PEN_STROKE_STREAMLINE,
+  calibrateStylusPressure,
   extractCoalescedSamples,
   getFreedrawStreamlineForPointer,
   isEraserOrBarrelButton,
@@ -94,6 +95,35 @@ describe("stylus helpers", () => {
         pressure: 0.4,
       }),
     ).toEqual([{ clientX: 40, clientY: 50, pressure: 0.4 }]);
+  });
+
+  it("calibrates stylus pressure across light, standard, and heavy modes", () => {
+    // Standard: 1:1 hardware digitizer pressure
+    expect(calibrateStylusPressure(0.8, "standard")).toBe(0.8);
+    expect(calibrateStylusPressure(0.2, "standard")).toBe(0.2);
+
+    // Light: damps high handwriting pressure so strokes stay flat and don't balloon
+    const lightHigh = calibrateStylusPressure(0.8, "light");
+    const lightLow = calibrateStylusPressure(0.2, "light");
+    expect(lightHigh).toBeLessThan(0.6);
+    expect(lightHigh).toBeGreaterThan(0.4);
+    // Difference is compressed compared to raw difference of 0.6
+    expect(lightHigh - lightLow).toBeLessThan(0.3);
+
+    // Heavy: dynamic power curve, light touches taper razor-thin
+    const heavyLow = calibrateStylusPressure(0.2, "heavy");
+    expect(heavyLow).toBeLessThan(0.1);
+    expect(calibrateStylusPressure(1.0, "heavy")).toBe(1.0);
+
+    // extractCoalescedSamples respects sensitivity setting
+    const lightSamples = extractCoalescedSamples(
+      { clientX: 10, clientY: 20, pressure: 0.9 },
+      "light",
+    );
+    expect(lightSamples[0].pressure).toBeCloseTo(
+      calibrateStylusPressure(0.9, "light"),
+      4,
+    );
   });
 
   it("applies pen streamline and palm rejection rules", () => {

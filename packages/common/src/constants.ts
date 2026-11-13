@@ -472,9 +472,10 @@ export const ROUGHNESS = {
   cartoonist: 2,
 } as const;
 
-export type StrokeWidthKey = "thin" | "medium" | "bold";
+export type StrokeWidthKey = "hairline" | "thin" | "medium" | "bold";
 
 export const STROKE_WIDTH_KEYS: readonly StrokeWidthKey[] = [
+  "hairline",
   "thin",
   "medium",
   "bold",
@@ -483,6 +484,7 @@ export const STROKE_WIDTH_KEYS: readonly StrokeWidthKey[] = [
 export const STROKE_WIDTH: Readonly<
   Record<StrokeWidthKey | "extraBold", ExcalidrawElement["strokeWidth"]>
 > = {
+  hairline: 0.5,
   thin: 1,
   medium: 2,
   bold: 4,
@@ -497,11 +499,23 @@ export const STROKE_WIDTH: Readonly<
 export const FREEDRAW_STROKE_WIDTH: Readonly<
   Record<StrokeWidthKey | "extraBold", ExcalidrawElement["strokeWidth"]>
 > = {
+  hairline: 0.25,
   thin: 0.5,
   medium: 1,
   bold: 2,
   extraBold: 4, // legacy (may be used again in the future)
 };
+
+export type PenPressureSensitivity = "light" | "standard" | "heavy";
+
+export const PEN_PRESSURE_SENSITIVITIES: readonly PenPressureSensitivity[] = [
+  "light",
+  "standard",
+  "heavy",
+] as const;
+
+export const DEFAULT_PEN_PRESSURE_SENSITIVITY: PenPressureSensitivity =
+  "standard";
 
 export const getStrokeWidthByKey = (
   elementType: ExcalidrawElement["type"],

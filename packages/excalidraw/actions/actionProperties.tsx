@@ -125,6 +125,7 @@ import {
   SloppinessArchitectIcon,
   SloppinessArtistIcon,
   SloppinessCartoonistIcon,
+  StrokeWidthHairlineIcon,
   StrokeWidthBaseIcon,
   StrokeWidthBoldIcon,
   StrokeWidthExtraBoldIcon,
@@ -737,6 +738,12 @@ export const actionChangeStrokeWidth = register<StrokeWidthKey>({
         <RadioSelection<StrokeWidthKey>
           group="stroke-width"
           options={[
+            {
+              value: "hairline",
+              text: t("labels.hairline"),
+              icon: StrokeWidthHairlineIcon,
+              testId: "strokeWidth-hairline",
+            },
             {
               value: "thin",
               text: t("labels.thin"),

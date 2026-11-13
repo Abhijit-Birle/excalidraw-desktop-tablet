@@ -14,6 +14,7 @@ Everything is **local-first**: diagrams, history, and thumbnails live in on-devi
 | --- | --- | --- |
 | Recent Files (50-item history, thumbnails, rename, delete) | — | Yes (macOS, Android, browser) |
 | Quick New Diagram (`+ New`, auto-titled, no blank spam) | — | Yes |
+| Quick Pen Size & Pressure (Hairline 0.25px, Light/Flattest sensitivity) | — | Yes (Toolbar popover) |
 | Native macOS app with `.excalidraw` / `.excalidrawlib` document handling | — | Yes (`Excalidraw.app`) |
 | Android APK with real S Pen pressure, palm rejection, coalesced-event smoothing | Browser-dependent | Yes |
 | Native save/share (files land in `Documents/Excalidraw`, Android Share sheet) | Browser download | Yes |
@@ -50,6 +51,10 @@ All other Excalidraw shortcuts work unchanged (useful with an external keyboard 
 ### Using the Android app with the S Pen
 
 - **Pressure**: real stylus pressure drives stroke width (`simulatePressure` is disabled for pens).
+- **Quick Pen Size & Pressure**: a dedicated quick control appears beside the Draw tool in the toolbar:
+  - **4 Size Presets**: Hairline (`0.25px`), Thin (`0.5px`), Medium (`1.0px`), Bold (`2.0px`) with a fine-tune thickness slider.
+  - **Pressure Sensitivity Modes**: **Light (Flattest)** (damps writing pressure to eliminate fat strokes for notes/math), **Standard** (1:1 hardware), and **Heavy (Dynamic)** (expressive calligraphic flair).
+  - **Ergonomics**: >= 44px touch targets; outside taps close the popover cleanly without leaving stray canvas strokes.
 - **Palm rejection**: auto-enables on pen contact and hover — rest your palm on the screen while drawing. Two-finger pinch-zoom/pan and UI taps stay active.
 - **Smoothness**: high-rate pointer samples are coalesced per frame and smoothed (`PEN_STROKE_STREAMLINE = 0.35`), keeping strokes smooth at 90Hz.
 - **Stylus buttons**: secondary/eraser buttons are mapped where the Android WebView exposes them.
@@ -169,6 +174,7 @@ The fork's features (Recent Files, `+ New`) work in the browser too — handy fo
 | Area | Key files |
 | --- | --- |
 | Recent Files store + dialog | [`excalidraw-app/data/recentFiles.ts`](./excalidraw-app/data/recentFiles.ts), [`excalidraw-app/components/RecentFilesDialog.tsx`](./excalidraw-app/components/RecentFilesDialog.tsx) |
+| Quick Pen Size & pressure control | [`packages/excalidraw/components/PenSizePopover.tsx`](./packages/excalidraw/components/PenSizePopover.tsx), [`packages/excalidraw/components/PenSizePopover.scss`](./packages/excalidraw/components/PenSizePopover.scss) |
 | S Pen input, palm rejection, stroke smoothing | [`packages/excalidraw/stylus.ts`](./packages/excalidraw/stylus.ts) (`PEN_STROKE_STREAMLINE = 0.35`) |
 | Android shell (layout pinning, back button, background flush) | [`excalidraw-app/capacitor/nativeBridge.ts`](./excalidraw-app/capacitor/nativeBridge.ts), [`excalidraw-app/App.tsx`](./excalidraw-app/App.tsx) |
 | Native export/share/import | [`excalidraw-app/data/capacitorFiles.ts`](./excalidraw-app/data/capacitorFiles.ts) |

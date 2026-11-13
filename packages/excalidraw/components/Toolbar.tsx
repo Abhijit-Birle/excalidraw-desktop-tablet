@@ -11,6 +11,7 @@ import { HintViewer } from "./HintViewer";
 import { Island } from "./Island";
 import { LockButton } from "./LockButton";
 import { PenModeButton } from "./PenModeButton";
+import { PenSizePopover } from "./PenSizePopover";
 import Stack from "./Stack";
 import DropdownMenu from "./dropdownMenu/DropdownMenu";
 import {
@@ -304,6 +305,13 @@ export const Toolbar = ({
           <FreedrawToolPopover {...toolProps} />
         ) : (
           <FreedrawToolButton {...toolProps} />
+        )}
+        {activeTool.type === "freedraw" && (
+          <PenSizePopover
+            app={app}
+            appState={appState}
+            setAppState={setAppState}
+          />
         )}
         <TextToolButton {...toolProps} />
         <StickyNoteToolButton {...toolProps} />

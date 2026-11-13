@@ -1157,6 +1157,19 @@ export const FillSolidIcon = createIcon(
   { ...modifiedTablerIconProps, fill: "currentColor" },
 );
 
+export const StrokeWidthHairlineIcon = createIcon(
+  <>
+    <path
+      d="M4.167 10h11.666"
+      stroke="currentColor"
+      strokeWidth="0.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </>,
+  modifiedTablerIconProps,
+);
+
 export const StrokeWidthBaseIcon = createIcon(
   <>
     <path

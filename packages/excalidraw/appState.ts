@@ -13,6 +13,7 @@ import {
   DEFAULT_GRID_STEP,
   isTestEnv,
   DEFAULT_STICKY_NOTE_BG,
+  DEFAULT_PEN_PRESSURE_SENSITIVITY,
 } from "@excalidraw/common";
 
 import type { AppState, InputDevice, NormalizedZoomValue } from "./types";
@@ -71,6 +72,7 @@ export const getDefaultAppState = (): Omit<
     },
     penMode: false,
     penDetected: false,
+    penPressureSensitivity: DEFAULT_PEN_PRESSURE_SENSITIVITY,
     errorMessage: null,
     exportBackground: true,
     exportScale: getDefaultExportScale(),
@@ -218,6 +220,7 @@ const APP_STATE_STORAGE_CONF = (<
   preferredSelectionTool: { browser: true, export: false, server: false },
   penMode: { browser: true, export: false, server: false },
   penDetected: { browser: true, export: false, server: false },
+  penPressureSensitivity: { browser: true, export: false, server: false },
   errorMessage: { browser: false, export: false, server: false },
   exportBackground: { browser: true, export: false, server: false },
   exportEmbedScene: { browser: true, export: false, server: false },
