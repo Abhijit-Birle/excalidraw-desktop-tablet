@@ -15,6 +15,7 @@ Everything is **local-first**: diagrams, history, and thumbnails live in on-devi
 | Recent Files (50-item history, thumbnails, rename, delete) | — | Yes (macOS, Android, browser) |
 | Quick New Diagram (`+ New`, auto-titled, no blank spam) | — | Yes |
 | Quick Pen Size & Pressure (Hairline 0.25px, Light/Flattest sensitivity) | — | Yes (Toolbar popover) |
+| On-device Handwriting → Text (S Pen, ML Kit offline, Excalifont) | — | Yes |
 | Native macOS app with `.excalidraw` / `.excalidrawlib` document handling | — | Yes (`Excalidraw.app`) |
 | Android APK with real S Pen pressure, palm rejection, coalesced-event smoothing | Browser-dependent | Yes |
 | Native save/share (files land in `Documents/Excalidraw`, Android Share sheet) | Browser download | Yes |
@@ -61,6 +62,16 @@ All other Excalidraw shortcuts work unchanged (useful with an external keyboard 
 - **Layout**: desktop layout is pinned in both portrait and landscape; rotating never switches UI modes or loses your scene.
 - **Back button**: closes open dialogs/menus first, then minimizes the app.
 - **Export**: `.excalidraw`, PNG, and SVG land in `Documents/Excalidraw` or go through the Android Share sheet; import diagrams/libraries/images via the Android file picker.
+
+### Handwriting → Text Conversion
+
+Convert handwritten S Pen notes directly into editable Excalidraw text elements:
+
+- **How to use**: Select any handwritten freedraw strokes with the Selection tool (`V`), then tap **Convert handwriting to text** in the selection actions panel or press `Ctrl/Cmd + Alt + H`.
+- **100% On-Device & Offline**: Powered by Google ML Kit Digital Ink Recognition with bundled `en-US` model in the Android APK — works in airplane mode with zero stroke data leaving the device.
+- **Natural Placement & Sizing**: Automatically clusters multi-line writing by vertical overlap, estimates median stroke height to derive matching font size, and positions the text element right where you wrote it.
+- **Review & Customize**: Preview recognized text, pick alternative candidate chips, adjust font family (defaults to hand-drawn `Excalifont`), and tweak font size before inserting.
+- **Atomic Undo**: Replacing source strokes with the text element executes as a single history step (`Ctrl/Cmd + Z` restores your original strokes).
 
 ### Where your data lives
 

@@ -185,6 +185,10 @@ export const getShapeActionPredicates = (
       singleSelected &&
       isLinearElement(targetElements[0]) &&
       !isElbowArrow(targetElements[0]),
+    handwritingToText:
+      hasSelection &&
+      !isEditingTextOrNewElement &&
+      targetElements.some((element) => element.type === "freedraw" && !element.isDeleted),
   };
 };
 

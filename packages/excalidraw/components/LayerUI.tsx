@@ -55,6 +55,7 @@ import { ErrorDialog } from "./ErrorDialog";
 import { EyeDropper, activeEyeDropperAtom } from "./EyeDropper";
 import { FixedSideContainer } from "./FixedSideContainer";
 import { HelpDialog } from "./HelpDialog";
+import { HandwritingDialog } from "./HandwritingDialog";
 import { ImageExportDialog } from "./ImageExportDialog";
 import { Island } from "./Island";
 import { JSONExportDialog } from "./JSONExportDialog";
@@ -607,6 +608,12 @@ const LayerUI = ({
               openDialog: null,
             })
           }
+        />
+      )}
+      {appState.openDialog?.name === "handwritingToText" && (
+        <HandwritingDialog
+          app={app}
+          onClose={() => setAppState({ openDialog: null })}
         />
       )}
       {editorInterface.formFactor === "phone" && (

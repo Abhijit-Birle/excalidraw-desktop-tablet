@@ -196,6 +196,7 @@
     "toggleWrap": "Wrap or unwrap selection",
     "tab": "Tab",
     "shapeSwitch": "Switch shape",
+    "handwritingToText": "Convert handwriting to text",
     "preferences": "Preferences",
     "preferences_toolLock": "Tool lock",
     "boxSelectionMode": "Select on",

@@ -209,6 +209,7 @@ export const SelectedShapeActions = ({
             {predicates.link && renderAction("hyperlink")}
             {predicates.cropEditor && renderAction("cropEditor")}
             {predicates.lineEditor && renderAction("toggleLinearEditor")}
+            {predicates.handwritingToText && renderAction("convertHandwritingToText")}
           </div>
         </fieldset>
       )}
@@ -568,6 +569,8 @@ const CombinedExtraActions = ({
                   {renderAction("ungroup")}
                   {predicates.linkSingleOnly && renderAction("hyperlink")}
                   {predicates.cropEditor && renderAction("cropEditor")}
+                  {predicates.handwritingToText &&
+                    renderAction("convertHandwritingToText")}
                   {showDuplicate && renderAction("duplicateSelection")}
                   {showDelete && renderAction("deleteSelectedElements")}
                 </div>
@@ -672,6 +675,13 @@ export const CompactShapeActions = ({
       {predicates.lineEditor && (
         <div className="compact-action-item">
           {renderAction("toggleLinearEditor")}
+        </div>
+      )}
+
+      {/* Handwriting to Text Quick Button */}
+      {predicates.handwritingToText && (
+        <div className="compact-action-item">
+          {renderAction("convertHandwritingToText")}
         </div>
       )}
 
